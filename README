@@ -22,15 +22,16 @@ cmake ../
 make slim
 
 # run SLiM simulation
+mkdir slim/output
 programs/SLiM/build/slim -d L=1e6 -d r=1e-8 -d R=2 -d SIGMA_int=1 -d SIGMA_disp=1 -d K=1 -d W=10.0 -d t=1e4 -d N0=10 -d "filename='slim/output/simple_space.trees'" slim/simple_space.slim 
 
-# get argutils from git clone https://github.com/tskit-dev/what-is-an-arg-paper (done, I've put this in the jupyter-notebooks folder to easily load from notebooks)
+# got argutils from git clone https://github.com/tskit-dev/what-is-an-arg-paper (I've put this in the jupyter-notebooks folder to easily load from notebooks)
 
 # open jupyter
 jupyter-lab
-# and from their navigate to notebook of interest within jupyter-notebooks/
+# and from there navigate to notebook of interest within jupyter-notebooks/
 
 # will need to pip install some packages (and dependencies for argutils, not listed here -- see their requirements.txt file) to run notebooks
-pip install pyslim
+pip install pyslim==1.0b1
 pip install tskit
 pip install matplotlib
