@@ -12,12 +12,18 @@ import matplotlib.pyplot as plt
 class LoopGroup:
     def __init__(self, nodes, loop_list):
         self.nodes = set(nodes)
-        self.youngest_node = min(nodes)
-        self.oldest_node = max(nodes)
         self.loops = []
         for loop in loop_list:
             if loop[0] in self.nodes:
                 self.loops.append(loop)
+        self.youngest_node = min(nodes)
+        self.input_node = max(nodes) #should this be changed to self.input_node
+        self.output_nodes = None
+        """
+        I don't know what best practice is here. I don't want the attribute
+        unless I've added to it. Should it be a list or set?
+        """
+        
         """
         We may want to also have a networkx graph representation here.
         This would allow us to calculate all of the paths through the
@@ -26,6 +32,13 @@ class LoopGroup:
     
     def __str__(self):
         return f'LoopGroup contains {len(self.loops)} loop(s): {self.loops}'
+    
+    def add_output_node(self, node):
+        if self.output_nodes == None:
+            self.output_nodes = [node]
+        else:
+            self.output_nodes.append(node)
+            self.output_nodes.sort()
 
 
 def ts_to_nx(ts, connect_recombination_nodes=False, recomb_nodes=[]):
@@ -115,19 +128,22 @@ def strip_graph(nx_graph, ts, grouped_loops):
     
     gmrca = ts.node(ts.num_nodes-1).id
     skeleton_topology = defaultdict(list)
+    previously_found = []
     working_nodes = list(ts.samples())
     for node in working_nodes:
         no_shallower_connection = True
         for lg in grouped_loops:
-            if node < lg.oldest_node:
-                if nx.has_path(nx_graph, source=node, target=lg.oldest_node):
-                    path = nx.shortest_path(nx_graph, source=node, target=lg.oldest_node)
+            if node < lg.input_node:
+                if nx.has_path(nx_graph, source=node, target=lg.input_node):
+                    path = nx.shortest_path(nx_graph, source=node, target=lg.input_node)
                     youngest_connection_node = min(list(set(path) & lg.nodes))
                     skeleton_topology[node].append(youngest_connection_node)
-                    if youngest_connection_node not in working_nodes:
-                        if lg.oldest_node != gmrca:
-                            working_nodes.append(lg.oldest_node)
-                        skeleton_topology[youngest_connection_node].append(lg.oldest_node)
+                    if youngest_connection_node not in previously_found:
+                        skeleton_topology[youngest_connection_node].append(lg.input_node)
+                        previously_found.append(youngest_connection_node)
+                        lg.add_output_node(youngest_connection_node)
+                    if lg.input_node != gmrca and lg.input_node not in working_nodes:
+                        working_nodes.append(lg.input_node)
                     no_shallower_connection = False
                     break
         if no_shallower_connection:
@@ -144,7 +160,7 @@ ts = msprime.sim_ancestry(
     sequence_length=2000,
     population_size=10_000,
     record_full_arg=True,
-    random_seed=rs
+    random_seed=7483
 )
 
 print(ts.draw_text())
@@ -153,3 +169,8 @@ G = ts_to_nx(ts=ts, connect_recombination_nodes=True)
 loops = locate_loops_combo(nx_graph=G, ts=ts) #Identify each loop as a list of nodes 
 grouped_loops = group_loops(loops=loops) #Group the loops if they shared edges
 skeleton_G = strip_graph(nx_graph=G, ts=ts, grouped_loops=grouped_loops)
+
+#print(grouped_loops)
+
+for lg in grouped_loops:
+    print(lg, lg.output_nodes)
