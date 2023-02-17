@@ -9,38 +9,6 @@ import networkx as nx
 import matplotlib.pyplot as plt
 
 
-class LoopGroup:
-    def __init__(self, nodes, loop_list):
-        self.nodes = set(nodes)
-        self.loops = []
-        for loop in loop_list:
-            if loop[0] in self.nodes:
-                self.loops.append(loop)
-        self.youngest_node = min(nodes)
-        self.input_node = max(nodes) #should this be changed to self.input_node
-        self.output_nodes = None
-        """
-        I don't know what best practice is here. I don't want the attribute
-        unless I've added to it. Should it be a list or set?
-        """
-        
-        """
-        We may want to also have a networkx graph representation here.
-        This would allow us to calculate all of the paths through the
-        LoopGroup, needed for the covariance matrix.
-        """
-    
-    def __str__(self):
-        return f'LoopGroup contains {len(self.loops)} loop(s): {self.loops}'
-    
-    def add_output_node(self, node):
-        if self.output_nodes == None:
-            self.output_nodes = [node]
-        else:
-            self.output_nodes.append(node)
-            self.output_nodes.sort()
-
-
 def ts_to_nx(ts, connect_recombination_nodes=False, recomb_nodes=[]):
     """
     Converts tskit tree sequence to networkx graph.
@@ -66,31 +34,11 @@ def ts_to_nx(ts, connect_recombination_nodes=False, recomb_nodes=[]):
                 if v not in topology[k]:
                     topology[k].append(v)
     nx_graph = nx.DiGraph(topology)
+    node_times = {v: k for v, k in enumerate(ts.tables.nodes.time)}
+    nx.set_node_attributes(nx_graph, node_times, "time")
     return nx_graph
 
-def locate_loops_combo(nx_graph, ts=None):
-    """
-    Finds loops within the ARG. I thought that it would be easiest to utilize functions from
-    networkx package. Identifies recombination events, converts the tree sequence into a networkx
-    graph. The paired recombination nodes are merged together in this graph. Converts graph to 
-    undirected, then calculates cycle basis. This does not identify 'bubbles', so we need to add
-    an extra step to this.
-    """
-    
-    loop_list = nx.cycle_basis(nx_graph.to_undirected())
-    if ts:
-        edges = ts.tables.edges
-        parent_list = list(edges.parent)
-        child_list = list(edges.child)
-        recomb_nodes = list(np.where(ts.tables.nodes.flags == 131072)[0])
-        if len(loop_list) != len(recomb_nodes)/2:
-            for node in recomb_nodes[::2]:
-                parent = parent_list[child_list.index(node)]
-                if parent == parent_list[child_list.index(node+1)]:
-                    loop_list.append([node, parent])
-    return loop_list
-
-def group_loops(loops, plot=False):
+def group_loops(loops):
     """
     Groups intersecting loops in list. Builds networkx graph based on the loop list. Determines
     if the nodes are connected through the graph. Returns a list of lists of loops.
@@ -110,46 +58,115 @@ def group_loops(loops, plot=False):
                         a, b = loop[n], loop[n+1]
                     build_instructions.append([a, b])
             g = nx.Graph(build_instructions)
-            if plot:
-                nx.draw(g, with_labels=True)
             grouped_nodes = list(nx.connected_components(g))
-            grouped_loops = []
-            for grouping in grouped_nodes:
-                grouped_loops.append(LoopGroup(nodes=grouping, loop_list=loops))
-            grouped_loops.sort(key=lambda x: x.youngest_node)
-            return grouped_loops
+            return grouped_nodes
         else:
-            return [LoopGroup(nodes=loops[0], loop_list=loops)]
-
-def strip_graph(nx_graph, ts, grouped_loops):
+            return [set(loops[0])]
+    
+def locate_loop_group_nodes(ARG):
     """
-    Creates a skeleton graph from the full graph
+    Finds loops within the ARG. I thought that it would be easiest to utilize functions from
+    networkx package. Identifies recombination events, converts the tree sequence into a networkx
+    graph. The paired recombination nodes are merged together in this graph. Converts graph to 
+    undirected, then calculates cycle basis. This does not identify 'bubbles', so we need to add
+    an extra step to this.
     """
     
-    gmrca = ts.node(ts.num_nodes-1).id
-    skeleton_topology = defaultdict(list)
+    loop_list = nx.cycle_basis(ARG.nx_graph_connected_recomb_nodes.to_undirected())
+    edges = ARG.ts.tables.edges
+    parent_list = list(edges.parent)
+    child_list = list(edges.child)
+    if len(loop_list) != len(ARG.recomb_nodes)/2:
+        for node in ARG.recomb_nodes[::2]:
+            parent = parent_list[child_list.index(node)]
+            if parent == parent_list[child_list.index(node+1)]:
+                loop_list.append([node, parent])
+    grouped_loops = group_loops(loops=loop_list)
+    return grouped_loops
+
+
+def generate_skeleton(ARG):
+    loop_group_nodes = locate_loop_group_nodes(ARG)
+    print(loop_group_nodes)
+    gmrca = ARG.ts.node(ARG.ts.num_nodes-1).id
+    all_loop_nodes = set([node for lg in loop_group_nodes for node in lg])
+    skeleton = defaultdict(list)
     previously_found = []
-    working_nodes = list(ts.samples())
+    working_nodes = list(ARG.ts.samples())
     for node in working_nodes:
         no_shallower_connection = True
-        for lg in grouped_loops:
-            if node < lg.input_node:
-                if nx.has_path(nx_graph, source=node, target=lg.input_node):
-                    path = nx.shortest_path(nx_graph, source=node, target=lg.input_node)
-                    youngest_connection_node = min(list(set(path) & lg.nodes))
-                    skeleton_topology[node].append(youngest_connection_node)
+        for lg in loop_group_nodes:
+            input_node = max(lg)
+            if node < input_node:
+                if nx.has_path(ARG.nx_graph_connected_recomb_nodes, source=node, target=input_node):
+                    path = nx.shortest_path(ARG.nx_graph_connected_recomb_nodes, source=node, target=input_node)
+                    youngest_connection_node = min(list(set(path[1:]) & all_loop_nodes))
+                    if youngest_connection_node not in lg:
+                        continue
+                    skeleton[youngest_connection_node].append(node)
                     if youngest_connection_node not in previously_found:
-                        skeleton_topology[youngest_connection_node].append(lg.input_node)
+                        skeleton[input_node].append(youngest_connection_node)
                         previously_found.append(youngest_connection_node)
-                        lg.add_output_node(youngest_connection_node)
-                    if lg.input_node != gmrca and lg.input_node not in working_nodes:
-                        working_nodes.append(lg.input_node)
+                        if youngest_connection_node in ARG.recomb_nodes:
+                            skeleton[input_node].append(youngest_connection_node+1)
+                    if input_node != gmrca and input_node not in working_nodes:
+                        working_nodes.append(input_node)
                     no_shallower_connection = False
                     break
         if no_shallower_connection:
-            skeleton_topology[node].append(gmrca)
-    return nx.DiGraph(skeleton_topology)
+            skeleton[gmrca].append(node)
+    return skeleton
 
+def calc_cov_matrix(ARG):
+    skeleton = generate_skeleton(ARG)
+    sub_cov_mats = {}
+    for group in skeleton:
+        paths = []
+        for output_node in skeleton[group]:
+            paths.extend(nx.all_simple_paths(ARG.nx_graph, source=output_node, target=group))
+            if group in ARG.recomb_nodes:
+                paths.extend(nx.all_simple_paths(ARG.nx_graph, source=output_node, target=group+1))
+        edges = ARG.ts.tables.edges
+        parent_list = list(edges.parent)
+        child_list = list(edges.child)
+        times = np.empty((len(paths),len(paths)))
+        for i, p in enumerate(paths):
+            for j in range(i+1):
+                intersect = list(set(p).intersection(paths[j]))
+                if i == j:
+                    times[i,j] = ARG.nx_graph.nodes[group]["time"]
+                elif intersect == [group]:
+                    times[i,j] = 0
+                else:
+                    edges = []
+                    for child in intersect:
+                        if child != group:
+                            edges.append(ARG.ts.node(parent_list[child_list.index(child)]).time - ARG.ts.node(child).time)
+                    times[i,j] = np.sum(edges) # Do I need np.unique()? Ask Matt, because it was previously in his
+                times[j,i] = times[i,j]
+        sub_cov_mats[group] = times
+        print(group, paths)
+        print(times)
+
+
+class ARGObject:
+    """
+    A ARGObject contains various methods for reference an ARG:
+        
+        ts - tskit tree sequence
+        nx_graph - directed networkx graph built from tree sequence instructions
+        nx_graph_connected_recomb_nodes - directed networkx graph where
+            recombination nodes have been merged
+
+    There are also a few attributes that are useful:
+        recomb_nodes - recombination nodes (very commonly referenced)
+    """
+
+    def __init__(self, ts):
+        self.ts = ts
+        self.recomb_nodes = list(np.where(self.ts.tables.nodes.flags == 131072)[0])
+        self.nx_graph = ts_to_nx(ts=ts, recomb_nodes=self.recomb_nodes)
+        self.nx_graph_connected_recomb_nodes = ts_to_nx(ts=ts, connect_recombination_nodes=True, recomb_nodes=self.recomb_nodes)
 
 rs = random.randint(0,10000)
 print(rs)
@@ -160,17 +177,10 @@ ts = msprime.sim_ancestry(
     sequence_length=2000,
     population_size=10_000,
     record_full_arg=True,
-    random_seed=7483
+    random_seed=5841#7483
 )
 
 print(ts.draw_text())
 
-G = ts_to_nx(ts=ts, connect_recombination_nodes=True)
-loops = locate_loops_combo(nx_graph=G, ts=ts) #Identify each loop as a list of nodes 
-grouped_loops = group_loops(loops=loops) #Group the loops if they shared edges
-skeleton_G = strip_graph(nx_graph=G, ts=ts, grouped_loops=grouped_loops)
-
-#print(grouped_loops)
-
-for lg in grouped_loops:
-    print(lg, lg.output_nodes)
+arg = ARGObject(ts=ts)
+calc_cov_matrix(ARG=arg)
