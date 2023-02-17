@@ -38,38 +38,14 @@ def ts_to_nx(ts, connect_recombination_nodes=False, recomb_nodes=[]):
     nx.set_node_attributes(nx_graph, node_times, "time")
     return nx_graph
 
-def group_loops(loops):
-    """
-    Groups intersecting loops in list. Builds networkx graph based on the loop list. Determines
-    if the nodes are connected through the graph. Returns a list of lists of loops.
-    """
-    
-    num_loops = len(loops)
-    if num_loops == 0:
-        return []
-    else:
-        if num_loops > 1:
-            build_instructions = []
-            for loop in loops:
-                for n in range(len(loop)):
-                    if n == len(loop)-1:
-                        a, b = loop[n], loop[0]
-                    else:
-                        a, b = loop[n], loop[n+1]
-                    build_instructions.append([a, b])
-            g = nx.Graph(build_instructions)
-            grouped_nodes = list(nx.connected_components(g))
-            return grouped_nodes
-        else:
-            return [set(loops[0])]
-    
 def locate_loop_group_nodes(ARG):
     """
-    Finds loops within the ARG. I thought that it would be easiest to utilize functions from
-    networkx package. Identifies recombination events, converts the tree sequence into a networkx
-    graph. The paired recombination nodes are merged together in this graph. Converts graph to 
-    undirected, then calculates cycle basis. This does not identify 'bubbles', so we need to add
-    an extra step to this.
+    First calculates the cycle basis of the graph (this utilizes the ARG with connected
+    recombination nodes), then groups those loops based on whether they are interconnected.
+    Returns a list of lists of nodes that are interconnected by loops in the ARG.
+
+    THE OUTPUT HAS BEEN CHANGED FROM PREVIOUS ITERATIONS. Loops themselves are no longer
+    preserved, only loop groups.
     """
     
     loop_list = nx.cycle_basis(ARG.nx_graph_connected_recomb_nodes.to_undirected())
@@ -81,13 +57,30 @@ def locate_loop_group_nodes(ARG):
             parent = parent_list[child_list.index(node)]
             if parent == parent_list[child_list.index(node+1)]:
                 loop_list.append([node, parent])
-    grouped_loops = group_loops(loops=loop_list)
-    return grouped_loops
+    num_loops = len(loop_list)
+    loop_group_nodes = []
+    if num_loops > 1:
+        build_instructions = []
+        for loop in loop_list:
+            for n in range(len(loop)):
+                if n == len(loop)-1:
+                    a, b = loop[n], loop[0]
+                else:
+                    a, b = loop[n], loop[n+1]
+                build_instructions.append([a, b])
+        g = nx.Graph(build_instructions)
+        loop_group_nodes = list(nx.connected_components(g))
+    elif num_loops == 1:
+        loop_group_nodes = [set(loop_list[0])]
+    return loop_group_nodes
 
 
 def generate_skeleton(ARG):
+    """
+    This matches Puneeth's skeleton graph but stored as a dictionary.
+    """
+
     loop_group_nodes = locate_loop_group_nodes(ARG)
-    print(loop_group_nodes)
     gmrca = ARG.ts.node(ARG.ts.num_nodes-1).id
     all_loop_nodes = set([node for lg in loop_group_nodes for node in lg])
     skeleton = defaultdict(list)
@@ -118,6 +111,18 @@ def generate_skeleton(ARG):
     return skeleton
 
 def calc_cov_matrix(ARG):
+    """
+    THIS METHOD DOES NOT MATCH UP PUNEETH'S, I misremembered it so will have to redo.
+    
+    Strips the ARG to its skeleton graph, where a group is a set of nodes which share the same parent
+    in the skeleton graph. Calculates all of the paths between each node and the parent of the group.
+    Calculates the covariance matrix between these paths.
+
+    This function should then merge the covariance matrices of each group to build the full covariance
+    matrix of the whole ARG, which is when I realized I was going about this process in a different
+    way to Puneeth.
+    """
+
     skeleton = generate_skeleton(ARG)
     sub_cov_mats = {}
     for group in skeleton:
@@ -158,7 +163,7 @@ class ARGObject:
         nx_graph_connected_recomb_nodes - directed networkx graph where
             recombination nodes have been merged
 
-    There are also a few attributes that are useful:
+    There are also an attributes that is often used with this class:
         recomb_nodes - recombination nodes (very commonly referenced)
     """
 
