@@ -129,8 +129,6 @@ def calc_cov_matrix(ARG):
         paths = []
         for output_node in skeleton[group]:
             paths.extend(nx.all_simple_paths(ARG.nx_graph, source=output_node, target=group))
-            if group in ARG.recomb_nodes:
-                paths.extend(nx.all_simple_paths(ARG.nx_graph, source=output_node, target=group+1))
         edges = ARG.ts.tables.edges
         parent_list = list(edges.parent)
         child_list = list(edges.child)
