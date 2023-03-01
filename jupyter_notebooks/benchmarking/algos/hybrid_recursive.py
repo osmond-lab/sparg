@@ -222,7 +222,7 @@ def benchmark(ts):
     arg = ARGObject(ts=ts)
     cov_mat = calc_cov_matrix(ARG=arg)
     end = time.time()
-    return end-start, cov_mat.sum()
+    return end-start, cov_mat.sum(), len(arg.loop_list)
     #print("HYBRID RECURSIVE - Total Execution Time:", round((end - start)/60, 2), "minutes")
     #print("----", cov_mat.sum())
     #np.savetxt("hybrid_r_cm.csv", cov_mat, delimiter=",")

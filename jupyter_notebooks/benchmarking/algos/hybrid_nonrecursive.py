@@ -199,6 +199,7 @@ class ARGObject:
         self.recomb_nodes = list(np.where(self.ts.tables.nodes.flags == 131072)[0])
         self.nx_graph = ts_to_nx(ts=ts, recomb_nodes=self.recomb_nodes)
         self.nx_graph_connected_recomb_nodes = ts_to_nx(ts=ts, connect_recombination_nodes=True, recomb_nodes=self.recomb_nodes)
+        self.loop_list = locate_loop_group_nodes(self)
 
 
 def benchmark(ts):
@@ -206,7 +207,7 @@ def benchmark(ts):
     arg = ARGObject(ts=ts)
     cov_mat = calc_cov_matrix(ARG=arg)
     end = time.time()
-    return end-start, cov_mat.sum()
+    return end-start, cov_mat.sum(), len(arg.loop_list)
     #print("HYBRID NONRECURSIVE - Total Execution Time:", round((end - start)/60, 2), "minutes")
     #print("----", cov_mat.sum())
     #np.savetxt("hybrid_nr_cm.csv", cov_mat, delimiter=",")

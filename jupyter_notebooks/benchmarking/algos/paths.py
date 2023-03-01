@@ -207,7 +207,7 @@ def benchmark(ts):
     paths = identify_unique_paths(ts=ts)
     sigma = calc_covariance_matrix(paths=paths, ts=ts)
     end = time.time()
-    return end-start, sigma.sum()
+    return end-start, sigma.sum(), "NA"
     #print("PATHS - Total Execution Time:", round((end - start)/60, 2), "minutes")
     #print("----", sigma.sum())
     #np.savetxt("paths_cm.csv", sigma, delimiter=",")
