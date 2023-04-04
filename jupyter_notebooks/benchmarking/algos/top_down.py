@@ -3,6 +3,7 @@ import random
 import numpy as np
 from collections import defaultdict
 import time
+import paths_modified
 
 
 def calc_covariance_matrix(ts):
@@ -49,23 +50,32 @@ def benchmark(ts):
     return end-start, cov_mat.sum(), "NA"
 
 if __name__ == "__main__":
+    
+    #for i in range(1000):
     rs = random.randint(0,10000)
-    print(7960)
+    print(rs)
     ts = msprime.sim_ancestry(
         samples=2,
         recombination_rate=1e-8,
         sequence_length=2_000,
         population_size=10_000,
         record_full_arg=True,
-        random_seed=7960
+        random_seed=9203
     )
-    print(ts.draw_text())
-    cov_mat = calc_covariance_matrix(ts=ts)
+    #print(ts.draw_text())
+    
     #print(cov_mat.sum())
     #np.savetxt("topdown.csv", cov_mat, delimiter=",")
 
     #print(benchmark(ts=ts))
 
+    cov_mat = calc_covariance_matrix(ts=ts)
+    #print(cov_mat.sum(), cov_mat.shape[0])
     #true_cov_mat, paths = paths_modified.calc_covariance_matrix(ts=ts)
-    #np.savetxt("paths_modified.csv", true_cov_mat, delimiter=",")
+    #print(true_cov_mat.sum(), true_cov_mat.shape[0])
     #print(paths)
+    #exit()
+    #np.savetxt("paths_modified.csv", true_cov_mat, delimiter=",")
+    if round(cov_mat.sum()) != round(true_cov_mat.sum()):
+        print(rs, "FAIL", cov_mat.sum(), true_cov_mat.sum())
+        

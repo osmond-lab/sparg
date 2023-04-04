@@ -40,13 +40,14 @@ def identify_unique_paths(ts):
     - all_paths: list, unique paths within the ARG
     """
     G = ts_to_nx(ts=ts)
-    
-    #unique paths up the ARG
-    gmrca = ts.node(ts.num_nodes-1).id
+    # originally had grmca but there are instances of multiple roots,
+    # so this should handle that.
+    roots = [i.id for i in list(ts.nodes()) if i.id not in list(ts.tables.edges.child)]
     all_paths = []
     for sample in ts.samples():
-        paths = nx.all_simple_paths(G, source=sample, target=gmrca)
-        all_paths.extend(paths)
+        for root in roots:
+            paths = nx.all_simple_paths(G, source=sample, target=root)
+            all_paths.extend(paths)
     return all_paths
 
 def calc_covariance_matrix(ts):
@@ -62,10 +63,11 @@ def calc_covariance_matrix(ts):
             for i, path in enumerate(paths):
                 if node.id in path:
                     path_indices.append(i)
-            shared_time = ts.node(parent_list[child_list.index(node.id)]).time - node.time
-            for a in path_indices:
-                for b in path_indices:
-                    cov_mat[a, b] += shared_time
+            if node.id in child_list:
+                shared_time = ts.node(parent_list[child_list.index(node.id)]).time - node.time
+                for a in path_indices:
+                    for b in path_indices:
+                        cov_mat[a, b] += shared_time
     return cov_mat, paths
 
 def benchmark(ts):
@@ -85,10 +87,9 @@ if __name__ == "__main__":
         sequence_length=2_000,#1_000
         population_size=10_000,
         record_full_arg=True,
-        random_seed=rs#9080
+        random_seed=9203#9080
     )
     print(ts.draw_text())
+    
     cov_mat, paths = calc_covariance_matrix(ts=ts)
-    #print(cov_mat.sum())
-    #print(paths)
     #np.savetxt("paths_modified.csv", cov_mat, delimiter=",")
