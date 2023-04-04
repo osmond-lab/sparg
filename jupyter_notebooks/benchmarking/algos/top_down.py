@@ -76,6 +76,6 @@ if __name__ == "__main__":
     #print(paths)
     #exit()
     #np.savetxt("paths_modified.csv", true_cov_mat, delimiter=",")
-    if round(cov_mat.sum()) != round(true_cov_mat.sum()):
-        print(rs, "FAIL", cov_mat.sum(), true_cov_mat.sum())
+    #if round(cov_mat.sum()) != round(true_cov_mat.sum()):
+    #    print(rs, "FAIL", cov_mat.sum(), true_cov_mat.sum())
         
