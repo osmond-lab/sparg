@@ -143,18 +143,6 @@ def calc_matrix(skeleton, sub_cov_matrix, group_node, start_nodes):
  
 
 def calc_subcov_matrix(ARG):
-    """
-    THIS METHOD DOES NOT MATCH UP PUNEETH'S, I misremembered it so will have to redo.
-    
-    Strips the ARG to its skeleton graph, where a group is a set of nodes which share the same parent
-    in the skeleton graph. Calculates all of the paths between each node and the parent of the group.
-    Calculates the covariance matrix between these paths.
-
-    This function should then merge the covariance matrices of each group to build the full covariance
-    matrix of the whole ARG, which is when I realized I was going about this process in a different
-    way to Puneeth.
-    """
-
     skeleton = generate_skeleton(ARG)
     sub_cov_mats = {}
     for group in skeleton:
@@ -186,7 +174,6 @@ def calc_subcov_matrix(ARG):
                 times[ (pi,pj) ] = np.matrix( times_pipj )
                 times[ (pj,pi) ] = np.matrix( np.transpose(times_pipj) )
         sub_cov_mats[group] = times
-    
     return sub_cov_mats
         
 def calc_cov_matrix(ARG):       
@@ -223,6 +210,19 @@ def benchmark(ts):
     cov_mat = calc_cov_matrix(ARG=arg)
     end = time.time()
     return end-start, cov_mat.sum(), len(arg.loop_list)
-    #print("HYBRID RECURSIVE - Total Execution Time:", round((end - start)/60, 2), "minutes")
-    #print("----", cov_mat.sum())
-    #np.savetxt("hybrid_r_cm.csv", cov_mat, delimiter=",")
+
+
+if __name__ == "__main__":
+    rs = random.randint(0,10000)
+    print(rs)
+    ts = msprime.sim_ancestry(
+        samples=2,
+        recombination_rate=1e-8,
+        sequence_length=2_000,
+        population_size=10_000,
+        record_full_arg=True,
+        random_seed=rs
+    )
+    print(ts.draw_text())
+    arg = ARGObject(ts=ts)
+    cov_mat = calc_cov_matrix(ARG=arg)

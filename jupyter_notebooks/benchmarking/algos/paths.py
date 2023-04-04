@@ -207,7 +207,21 @@ def benchmark(ts):
     paths = identify_unique_paths(ts=ts)
     sigma = calc_covariance_matrix(paths=paths, ts=ts)
     end = time.time()
-    return end-start, sigma.sum(), "NA"
-    #print("PATHS - Total Execution Time:", round((end - start)/60, 2), "minutes")
-    #print("----", sigma.sum())
     #np.savetxt("paths_cm.csv", sigma, delimiter=",")
+    return end-start, sigma.sum(), "NA"
+
+
+if __name__ == "__main__":
+    rs = random.randint(0,10000)
+    print(rs)
+    ts = msprime.sim_ancestry(
+        samples=2,#30
+        recombination_rate=1e-8,
+        sequence_length=2_000,#1_000
+        population_size=10_000,
+        record_full_arg=True,
+        random_seed=rs#9080
+    )
+    print(ts.draw_text())
+    paths = identify_unique_paths(ts=ts)
+    sigma = calc_covariance_matrix(paths=paths, ts=ts)
