@@ -1,0 +1,9 @@
+start=0	end=3000
+name	event	age	pos	parents	children
+4	coal	122.586947	0	5	n1,n0
+5	coal	122.586947	0		6,4
+6	coal	122.586947	0	5	n3,n2
+n0	gene	0.0	0	4	
+n1	gene	0.0	0	4	
+n2	gene	0.0	0	6	
+n3	gene	0.0	0	6	

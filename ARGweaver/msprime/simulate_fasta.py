@@ -4,21 +4,26 @@ import random
 # Generate a random tree sequence with record_full_arg=True so that you get marked recombination nodes
 ts_rs = random.randint(0,10000)   
 ts = msprime.sim_ancestry(
-    samples=2,
-    recombination_rate=1e-8,
-    sequence_length=3_000,
+    samples=5,
+    recombination_rate=1.5e-8,
+    sequence_length=5_000,
     population_size=10_000,
     record_full_arg=True,
     random_seed=ts_rs
 )
+
 mts_rs = random.randint(0,10000)
 mts = msprime.sim_mutations(
     tree_sequence=ts, 
-    rate=0.01,
+    rate=2.5e-8,
     random_seed=mts_rs
 )
 
-mts.write_fasta("output.fa")
+print(ts_rs)
+print(mts_rs)
+print(ts.num_trees)
+
+mts.write_fasta("run4/"+str(ts_rs)+"_"+str(mts_rs)+".fa")
 
 
 #for var in mts.variants():
