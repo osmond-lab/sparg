@@ -6,7 +6,7 @@ ts_rs = random.randint(0,10000)
 ts = msprime.sim_ancestry(
     samples=5,
     recombination_rate=1.5e-8,
-    sequence_length=5_000,
+    sequence_length=2_000,
     population_size=10_000,
     record_full_arg=True,
     random_seed=ts_rs
@@ -23,7 +23,7 @@ print(ts_rs)
 print(mts_rs)
 print(ts.num_trees)
 
-mts.write_fasta("run4/"+str(ts_rs)+"_"+str(mts_rs)+".fa")
+mts.write_fasta("run5/"+str(ts_rs)+"_"+str(mts_rs)+".fa")
 
 
 #for var in mts.variants():
