@@ -12,7 +12,7 @@ ts = msprime.sim_ancestry(
     random_seed=ts_rs
 )
 
-mts_rs = random.randint(0,10000)
+mts_rs = random.randint(1,10000)
 mts = msprime.sim_mutations(
     tree_sequence=ts, 
     rate=2.5e-8,

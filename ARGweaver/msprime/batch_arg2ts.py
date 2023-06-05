@@ -47,10 +47,10 @@ def arg2ts(file_path):
         if record["event"] == "gene":
             tables.nodes.add_row(flags=tskit.NODE_IS_SAMPLE, time=record["age"], metadata={"name": record["name"]})
         elif record["event"] == "recomb":
-            tables.nodes.add_row(flags=msprime.NODE_IS_RE_EVENT, time=record["age"]+counter/(1e-6), metadata={"name": record["name"]})
-            tables.nodes.add_row(flags=msprime.NODE_IS_RE_EVENT, time=record["age"]+counter/(1e-6), metadata={"name": record["name"]})
+            tables.nodes.add_row(flags=msprime.NODE_IS_RE_EVENT, time=record["age"]+counter/(1e6), metadata={"name": record["name"]})
+            tables.nodes.add_row(flags=msprime.NODE_IS_RE_EVENT, time=record["age"]+counter/(1e6), metadata={"name": record["name"]})
         else:
-            tables.nodes.add_row(flags=0, time=record["age"]+counter/(1e-6), metadata={"name": record["name"]})
+            tables.nodes.add_row(flags=0, time=record["age"]+counter/(1e6), metadata={"name": record["name"]})
         node_id_convert[record["name"]] = {"id":counter, "pos": record["pos"]}
         if record["event"] == "recomb":
             counter += 1
