@@ -5,12 +5,14 @@ import top_down
 import matplotlib.pyplot as plt
 
 
-ts = tskit.load("run5/9840.trees")
+ts = tskit.load("run6/5804.trees")
 sample_locs = np.linspace(0, 1, ts.num_samples)
 paths, node_times, node_locs, dispersal_rate = top_down.reconstruct_node_locations(ts=ts, sample_locs=sample_locs)
+print("truth")
 
-args = glob.glob("run5/ARGweaver_output/ts/*")
+args = glob.glob("run6/ARGweaver_output/ts/*")
 for arg in args:
+    print(arg)
     inferred_ts = tskit.load(arg)
     inferred_paths, inferred_node_times, inferred_node_locs, inferred_dispersal_rate = top_down.reconstruct_node_locations(ts=inferred_ts, sample_locs=sample_locs)
     for p in inferred_paths:
@@ -21,6 +23,7 @@ for arg in args:
                 p_times.append(inferred_node_times[n])
                 p_locs.append(inferred_node_locs[n])
             plt.plot(p_locs, p_times, color="grey")
+    plt.pause(0.05)
 
 for p in paths:
     if p[0] == 0:
@@ -31,7 +34,6 @@ for p in paths:
             p_locs.append(node_locs[n])
         plt.plot(p_locs, p_times)
 
-plt.yscale("log")
 plt.show()
 
 exit()

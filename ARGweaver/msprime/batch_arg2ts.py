@@ -76,7 +76,7 @@ def arg2ts(file_path):
     return ts.simplify(keep_unary=True)
 
 
-args = glob.glob("run5/ARGweaver_output/arg/*")
+args = glob.glob("run6/ARGweaver_output/arg/*")
 for arg in args:
     ts = arg2ts(file_path=arg)
     split_path = arg.split("/")

@@ -2,17 +2,16 @@ import msprime
 import random
 
 # Generate a random tree sequence with record_full_arg=True so that you get marked recombination nodes
-ts_rs = 9840 #random.randint(0,10000)   
+ts_rs = 5804 #random.randint(0,10000)   
 ts = msprime.sim_ancestry(
-    samples=5,
+    samples=100,
     recombination_rate=1.5e-8,
-    sequence_length=2_000,
+    sequence_length=10_000,
     population_size=10_000,
     record_full_arg=True,
-    random_seed=ts_rs
+    random_seed=5804
 )
-
-ts.dump("run5/9840.trees")
+ts.dump("run6/5804.trees")
 
 
 
