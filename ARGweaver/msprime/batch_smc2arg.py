@@ -1,7 +1,7 @@
 import glob
 import os
 
-smc = glob.glob("run5/ARGweaver_output/smc/*")
+smc = glob.glob("run6/ARGweaver_output/smc/*")
 
 print(smc)
 
