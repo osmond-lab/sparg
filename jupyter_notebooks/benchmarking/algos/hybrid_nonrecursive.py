@@ -202,12 +202,25 @@ class ARGObject:
         self.loop_list = locate_loop_group_nodes(self)
 
 
-def benchmark(ts):
+def benchmark(ts=""):
     start = time.time()
+    if ts == "":
+        rs = random.randint(0,10000)
+        print(3448)
+        ts = msprime.sim_ancestry(
+            samples=2,#30
+            recombination_rate=1e-8,
+            sequence_length=2_000,#1_000
+            population_size=10_000,
+            record_full_arg=True,
+            random_seed=rs#9080
+        )
+        #print(ts.draw_text())
     arg = ARGObject(ts=ts)
     cov_mat = calc_cov_matrix(ARG=arg)
     end = time.time()
-    return end-start, cov_mat.sum(), len(arg.loop_list)
-    #print("HYBRID NONRECURSIVE - Total Execution Time:", round((end - start)/60, 2), "minutes")
-    #print("----", cov_mat.sum())
     #np.savetxt("hybrid_nr_cm.csv", cov_mat, delimiter=",")
+    print(cov_mat.sum())
+    return end-start, cov_mat.sum(), len(arg.loop_list)
+
+benchmark()

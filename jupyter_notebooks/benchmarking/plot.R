@@ -1,26 +1,36 @@
 library(ggplot2)
 
-file <- read.csv("/Users/jameskitchens/Documents/GitHub/sparg2.0/jupyter_notebooks/benchmarking/benchmarking_with_td.csv", colClasses=c(algo_order="character"))
-file$paths_sum <- round(file$paths_sum)
+file <- read.csv("/Users/jameskitchens/Documents/GitHub/sparg2.0/jupyter_notebooks/benchmarking/benchmarking_subset_2.csv", colClasses=c(algo_order="character"))
+#file$paths_sum <- round(file$paths_sum)
+file$top_down_sum <- round(file$top_down_sum)
 file$paths_modified_sum <- round(file$paths_modified_sum)
-file$hybrid_nr_sum <- round(file$hybrid_nr_sum)
+#file$hybrid_nr_sum <- round(file$hybrid_nr_sum)
 
 
-filtered <- file[which(file$paths_sum!=file$hybrid_nr_sum),]
+sum(file$top_down_sum != file$paths_modified_sum)
+
+filtered <- file[which(round(file$paths_sum)!=round(file$top_down_sum)),]
 
 filtered$paths_sum
 filtered$paths_modified_sum
 
 ggplot(data=file) +
-  geom_point(aes(paths, paths_time, color="Paths"), alpha=0.3) +
-  geom_smooth(aes(paths, paths_time, color="Paths"), se=F) +
-  geom_point(aes(paths, hybrid_r_time, color="Hybrid (Recursive)"), alpha=0.3) +
-  geom_smooth(aes(paths, hybrid_r_time, color="Hybrid (Recursive)"), se=F) +
+  #geom_point(aes(paths, paths_time, color="Paths"), alpha=0.3) +
+  #geom_smooth(aes(paths, paths_time, color="Paths"), se=F) +
+  #geom_point(aes(paths, hybrid_r_time, color="Hybrid (Recursive)"), alpha=0.3) +
+  #geom_smooth(aes(paths, hybrid_r_time, color="Hybrid (Recursive)"), se=F) +
   geom_point(aes(paths, paths_modified_time, color="Paths (Modified)"), alpha=0.3) +
   geom_smooth(aes(paths, paths_modified_time, color="Paths (Modified)"), se=F) +
+  geom_point(aes(paths, top_down_time, color="Top Down"), alpha=0.3) +
+  geom_smooth(aes(paths, top_down_time, color="Top Down"), se=F) +
+  xlim(min=0, max=1000) +
+  ylim(min=0, max=10) +
+  #coord_cartesian(ylim=c(0, 1)) +
   xlab("Number of Paths in ARG") +
   ylab("Time to Compute Covariance Matrix") +
   theme_minimal()
+
+max(file$paths_modified_time)
 
 #geom_label(aes(paths, 250, label=paste("#Samples:", num_samples, "\n#Trees:", num_trees))) +
 

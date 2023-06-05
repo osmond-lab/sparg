@@ -96,7 +96,7 @@ def Cov(edge_path1,edge_path2,G):
     # print('check',edge_path2)
     common_edges = set(edge_path1).intersection(set(edge_path2))
     cov = 0 
-    for edge in common_edges: 
+    for edge in common_edges:
         t_edge = G.nodes()[edge[1]]['time'] - G.nodes()[edge[0]]['time']
         cov += t_edge 
     return cov 

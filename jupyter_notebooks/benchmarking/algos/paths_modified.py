@@ -3,8 +3,9 @@ import msprime
 import numpy as np
 import networkx as nx
 from collections import defaultdict
-from itertools import chain, combinations
+from itertools import chain
 import time
+import matplotlib.pyplot as plt
 
 
 def ts_to_nx(ts, connect_recombination_nodes=False, recomb_nodes=[]):
@@ -50,46 +51,176 @@ def identify_unique_paths(ts):
             all_paths.extend(paths)
     return all_paths
 
-def calc_covariance_matrix(ts):
+def create_sample_locations_array(paths, sample_locs):
+    """
+    Expands sample locations to pair with the unique paths. Accounts for samples having multiple
+    paths.
+    
+    Inputs:
+    - paths: list, unique paths within the ARG. Output of identify_unique_paths(). If not
+        provided, this will be calculated
+    - sample_locs: numpy array, sample locations
+    
+    Output:
+    - path_locs: numpy array, sample locations expanded to match number of paths
+    """
+    sample_locs_array = []
+    for path in paths:
+        sample_locs_array.append([sample_locs[path[0]]])
+    path_locs = np.array(sample_locs_array)
+    return path_locs
+
+def link_node_with_path(ts, paths):
+    """
+    Adds paths from internal nodes to the root to the paths list used for calculating the
+    covariance matrix. Could potentially only do one of the two recombination nodes, but keeping
+    it simple for now
+
+    Inputs:
+    - ts: tskit tree sequence
+    - paths: list, unique paths within the ARG. Output of identify_unique_paths().
+
+    Output:
+    - path_list: list, updated paths list
+    """
+    path_list = []
+    for node in ts.nodes():
+        if node.flags == 1 or node.time == ts.max_root_time:
+            continue
+        for i in range(len(paths)):
+            if node.id in paths[i]:
+                path_list.append(paths[i][paths[i].index(node.id):])
+                break
+    return path_list
+
+def calc_covariance_matrix(ts, paths=[], return_paths=False):
     edges = ts.tables.edges
     parent_list = list(edges.parent)
     child_list = list(edges.child)
-    gmrca = ts.node(ts.num_nodes-1).id
-    paths = identify_unique_paths(ts=ts)
+    if len(paths) == 0:
+        paths = identify_unique_paths(ts=ts)
+        return_paths = True
     cov_mat = np.zeros((len(paths), len(paths)))
     for node in ts.nodes():
-        if node.id != gmrca:
+        if node.id in child_list:
             path_indices = []
             for i, path in enumerate(paths):
                 if node.id in path:
                     path_indices.append(i)
-            if node.id in child_list:
-                shared_time = ts.node(parent_list[child_list.index(node.id)]).time - node.time
-                for a in path_indices:
-                    for b in path_indices:
-                        cov_mat[a, b] += shared_time
-    return cov_mat, paths
+            shared_time = ts.node(parent_list[child_list.index(node.id)]).time - node.time
+            for a in path_indices:
+                for b in path_indices:
+                    cov_mat[a, b] += shared_time
+    if return_paths:
+        return cov_mat, paths
+    else:
+        return cov_mat
+
+def locate_mle_gmrca(inv_sigma_22, sample_locs):
+    """
+    Locates the maximum likelihood estimate of the grand most recent common ancestor based on the covariance
+    matrix between paths and sample locations (Equation 5.6 from 
+    https://lukejharmon.github.io/pcm/pdf/phylogeneticComparativeMethods.pdf). Currently, requires simga_22
+    to be pre-inverted (may be worth adding both options in future).
+    
+    Inputs:
+    - inv_sigma_22: numpy array, inverted covariance matrix between paths at sample time
+    - sample_locs: numpy array, sample locations expanded to match number of paths. Output of
+        create_sample_locations_array().
+    
+    Output:
+    - u1: float, maximum likelihood estimate of the grand most recent common ancestor (GMRCA). Output of 
+        locate_mle_gmrca().
+    """
+    k = len(inv_sigma_22)
+    a1 = np.matmul(np.matmul(np.ones(k), inv_sigma_22), np.ones(k).reshape(-1,1))
+    a2 = np.matmul(np.matmul(np.ones(k), inv_sigma_22), sample_locs)
+    u1 = a2/a1
+    return u1
+
+
+def estimate_mle_dispersal(Tinv, locs):
+    '''
+    MLE dispersal estimate
+    
+    parameters
+    ----------
+    Tinv: inverse covariance matrix among sample locations
+    locs: sample locations
+    '''
+    k = len(locs) #number of paths
+    # find MLE MRCA location (eqn 5.6 Harmon book)
+    a1 = np.matmul(np.matmul(np.ones(k), Tinv), np.ones(k).reshape(-1,1))
+    a2 = np.matmul(np.matmul(np.ones(k), Tinv), locs)
+    ahat = a2/a1
+    # find MLE dispersal rate (eqn 5.7 Harmon book)
+    x = locs.reshape(-1,1) #make locations a column vector
+    R1 = x - ahat * np.ones(k).reshape(-1,1)
+    Rhat = np.matmul(np.matmul(np.transpose(R1), Tinv), R1) / (k-1)
+    return Rhat[0]
+
+def reconstruct_node_locations(ts, sample_locs):
+    """
+    Calculates the location of ancestral nodes using conditional multivariate normal distribution.
+
+    Inputs:
+    - ts: tskit tree sequence. Needed for node times
+    - paths: list, unique paths within the ARG. Output of identify_unique_paths()
+    - sample_locs: list of sample locations, one location per sample
+
+    Outputs:
+    - node_times: list, time of nodes from present
+    - node_locs: list, location of nodes
+    """
+    paths = identify_unique_paths(ts=ts)
+    sample_locs_array = create_sample_locations_array(paths=paths, sample_locs=sample_locs) # expands locs
+    node_paths = link_node_with_path(ts=ts, paths=paths)
+    all_paths = node_paths + paths
+    sigma = calc_covariance_matrix(ts=ts, paths=all_paths)
+    np.savetxt("path_CM.csv", sigma, delimiter=",")
+    sigma_11 = sigma[0:sigma.shape[0]-len(paths),0:sigma.shape[1]-len(paths)]
+    sigma_12 = sigma[0:sigma.shape[0]-len(paths),sigma.shape[1]-len(paths):sigma.shape[1]]
+    sigma_21 = sigma[sigma.shape[0]-len(paths):sigma.shape[0],0:sigma.shape[1]-len(paths)]
+    sigma_22 = sigma[sigma.shape[0]-len(paths):sigma.shape[0],sigma.shape[1]-len(paths):sigma.shape[1]]
+    inv_sigma_22 = np.linalg.pinv(sigma_22)
+    dispersal_rate = estimate_mle_dispersal(inv_sigma_22, sample_locs_array)
+    print(dispersal_rate)
+    u1 = locate_mle_gmrca(inv_sigma_22=inv_sigma_22, sample_locs=sample_locs_array)
+    cmvn_u = u1 + np.dot(np.dot(sigma_12, inv_sigma_22),sample_locs_array - u1)
+    cmvn_sigma = sigma_11 - np.dot(np.dot(sigma_12, inv_sigma_22), sigma_21)
+    node_times = ts.tables.nodes.time
+    node_locs = np.concatenate((sample_locs, np.transpose(cmvn_u)[0], u1))
+    return paths, node_times, node_locs, dispersal_rate
 
 def benchmark(ts):
     start = time.time()
     cov_mat, paths = calc_covariance_matrix(ts=ts)
     end = time.time()
-    np.savetxt("paths_modified.csv", cov_mat, delimiter=",")
     return end-start, cov_mat.sum(), "NA"
 
 
 if __name__ == "__main__":
     rs = random.randint(0,10000)
-    print(rs)
+    #print(rs)
     ts = msprime.sim_ancestry(
-        samples=2,#30
+        samples=100,
         recombination_rate=1e-8,
-        sequence_length=2_000,#1_000
+        sequence_length=2_000,
         population_size=10_000,
         record_full_arg=True,
-        random_seed=9203#9080
+        random_seed=8522
     )
-    print(ts.draw_text())
+    #print(ts.draw_text())
     
-    cov_mat, paths = calc_covariance_matrix(ts=ts)
-    #np.savetxt("paths_modified.csv", cov_mat, delimiter=",")
+    sample_locs = np.linspace(0, 1, ts.num_samples)
+
+    paths, times, locations, dispersal_rate = reconstruct_node_locations(ts=ts, sample_locs=sample_locs)
+
+    for p in paths:
+        p_times = []
+        p_locs = []
+        for n in p:
+            p_times.append(times[n])
+            p_locs.append(locations[n])
+        plt.plot(p_locs, p_times)
+    plt.show()

@@ -132,7 +132,6 @@ def calc_matrix(skeleton, sub_cov_matrix, group_node, start_nodes):
                     Ci = C_mats[pi]
                     Dii = sub_cov_matrix[group_node][ (pi,pi) ]
                     d = Dii.shape
-                    # print('cicj',d,ci,cj,Ci.shape,Dii.shape)
                     output_mat[i][j] = np.kron( Ci, np.matrix(np.ones(d)) ) + np.kron( np.matrix(np.ones((ci,cj))), Dii)
                 else: 
                     Dij = sub_cov_matrix[group_node][ (pi,pj) ]

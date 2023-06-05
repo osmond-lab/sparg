@@ -7,6 +7,7 @@ from collections import defaultdict
 from itertools import chain
 import networkx as nx
 import matplotlib.pyplot as plt
+import time
 
 
 def ts_to_nx(ts, connect_recombination_nodes=False, recomb_nodes=[]):
@@ -74,7 +75,6 @@ def locate_loop_group_nodes(ARG):
         loop_group_nodes = [set(loop_list[0])]
     return loop_group_nodes
 
-
 def generate_skeleton(ARG):
     """
     This matches Puneeth's skeleton graph but stored as a dictionary.
@@ -94,21 +94,69 @@ def generate_skeleton(ARG):
                 if nx.has_path(ARG.nx_graph_connected_recomb_nodes, source=node, target=input_node):
                     path = nx.shortest_path(ARG.nx_graph_connected_recomb_nodes, source=node, target=input_node)
                     youngest_connection_node = min(list(set(path[1:]) & all_loop_nodes))
-                    if youngest_connection_node not in lg:
-                        continue
+                    #if youngest_connection_node not in lg:
+                    #    continue
                     skeleton[youngest_connection_node].append(node)
                     if youngest_connection_node not in previously_found:
                         skeleton[input_node].append(youngest_connection_node)
                         previously_found.append(youngest_connection_node)
-                        if youngest_connection_node in ARG.recomb_nodes:
-                            skeleton[input_node].append(youngest_connection_node+1)
+                        #if youngest_connection_node in ARG.recomb_nodes:
+                        #    skeleton[input_node].append(youngest_connection_node+1)
                     if input_node != gmrca and input_node not in working_nodes:
                         working_nodes.append(input_node)
                     no_shallower_connection = False
                     break
         if no_shallower_connection:
             skeleton[gmrca].append(node)
+    for group in skeleton:
+        skeleton[group] = sorted(skeleton[group])
     return skeleton
+
+def combine_cov_submatrices(skeleton, sub_cov_mats, row_column_ids, group_node, samples):
+    if group_node in samples:
+        return np.array([0])
+    else:
+        num_output_nodes = len(skeleton[group_node])
+        output_mat = [list(x) for x in np.zeros((num_output_nodes, num_output_nodes))]
+        for i, output_node_1 in enumerate(skeleton[group_node]):
+            for j, output_node_2 in enumerate(skeleton[group_node]):
+                print(group_node, output_node_1, output_node_2)
+                current_cov = combine_cov_submatrices(skeleton=skeleton, sub_cov_mats=sub_cov_mats, row_column_ids=row_column_ids, group_node=output_node_2, samples=samples)
+                new_cov = sub_cov_mats[group_node][row_column_ids[output_node_1]["start"]:row_column_ids[output_node_1]["stop"], row_column_ids[output_node_2]["start"]:row_column_ids[output_node_2]["stop"]]
+                if i == j:
+                    output_mat[i][j] = np.kron( current_cov, np.ones(new_cov.shape)) + np.kron(np.ones(current_cov.shape), new_cov)
+                else:
+                    output_mat[i][j] = np.kron(np.ones(current_cov.shape), new_cov)
+                print(output_mat)
+        print(group_node)
+        print(output_mat)
+        return np.bmat(output_mat)
+
+def non_recursive_combine_cov_submatrices(skeleton, sub_cov_mats, row_column_ids, samples):
+    aggregated_cov_mats = {}
+    for group in sorted(skeleton.keys()):
+        if all(child not in sub_cov_mats for child in skeleton[group]):
+            aggregated_cov_mats[group] = sub_cov_mats[group]
+        else:
+            num_output_nodes = len(skeleton[group])
+            output_mat = [list(x) for x in np.zeros((num_output_nodes, num_output_nodes))]
+            for i, output_node_1 in enumerate(skeleton[group]):
+                if output_node_1 in samples:
+                    output_node_1_cov = np.array([[0]])
+                else:
+                    output_node_1_cov = aggregated_cov_mats[output_node_1]
+                for j, output_node_2 in enumerate(skeleton[group]):
+                    if output_node_2 in samples:
+                        output_node_2_cov = np.array([[0]])
+                    else:
+                        output_node_2_cov = aggregated_cov_mats[output_node_2]
+                    new_cov = sub_cov_mats[group][row_column_ids[output_node_1]["start"]:row_column_ids[output_node_1]["stop"], row_column_ids[output_node_2]["start"]:row_column_ids[output_node_2]["stop"]]
+                    if output_node_1 == output_node_2:
+                        output_mat[i][j] = np.kron(output_node_1_cov, np.ones(new_cov.shape)) + np.kron(np.ones(output_node_1_cov.shape), new_cov)
+                    else:
+                        output_mat[i][j] = np.kron(np.ones((output_node_1_cov.shape[0],output_node_2_cov.shape[1])), new_cov)
+            aggregated_cov_mats[group] = np.bmat(output_mat)
+    return aggregated_cov_mats[max(aggregated_cov_mats.keys())]
 
 def calc_cov_matrix(ARG):
     """
@@ -125,31 +173,32 @@ def calc_cov_matrix(ARG):
 
     skeleton = generate_skeleton(ARG)
     sub_cov_mats = {}
+    number_of_paths_per_node = {}
     for group in skeleton:
-        paths = []
+        all_paths = []
+        path_counter = 0
         for output_node in skeleton[group]:
-            paths.extend(nx.all_simple_paths(ARG.nx_graph, source=output_node, target=group))
+            node_paths = list(nx.all_simple_paths(ARG.nx_graph, source=output_node, target=group))
+            if output_node in ARG.recomb_nodes:
+                node_paths.extend(nx.all_simple_paths(ARG.nx_graph, source=output_node+1, target=group))
+            number_of_paths_per_node[output_node] = {"start":path_counter,"stop":path_counter+len(node_paths)}
+            path_counter += len(node_paths)
+            all_paths.extend(node_paths)
         edges = ARG.ts.tables.edges
         parent_list = list(edges.parent)
         child_list = list(edges.child)
-        times = np.empty((len(paths),len(paths)))
-        for i, p in enumerate(paths):
+        times = np.empty((len(all_paths),len(all_paths)))
+        for i, p in enumerate(all_paths):
             for j in range(i+1):
-                intersect = list(set(p).intersection(paths[j]))
-                if i == j:
-                    times[i,j] = ARG.nx_graph.nodes[group]["time"]
-                elif intersect == [group]:
-                    times[i,j] = 0
-                else:
-                    edges = []
-                    for child in intersect:
-                        if child != group:
-                            edges.append(ARG.ts.node(parent_list[child_list.index(child)]).time - ARG.ts.node(child).time)
-                    times[i,j] = np.sum(edges) # Do I need np.unique()? Ask Matt, because it was previously in his
+                intersect = list(set(p).intersection(all_paths[j]))
+                edges = []
+                for child in intersect:
+                    if child != group:
+                        edges.append(ARG.ts.node(parent_list[child_list.index(child)]).time - ARG.ts.node(child).time)
+                times[i,j] = np.sum(edges)
                 times[j,i] = times[i,j]
         sub_cov_mats[group] = times
-        print(group, paths)
-        print(times)
+    return non_recursive_combine_cov_submatrices(skeleton=skeleton, sub_cov_mats=sub_cov_mats, row_column_ids=number_of_paths_per_node, samples=ARG.ts.samples())
 
 
 class ARGObject:
@@ -171,19 +220,25 @@ class ARGObject:
         self.nx_graph = ts_to_nx(ts=ts, recomb_nodes=self.recomb_nodes)
         self.nx_graph_connected_recomb_nodes = ts_to_nx(ts=ts, connect_recombination_nodes=True, recomb_nodes=self.recomb_nodes)
 
+
 rs = random.randint(0,10000)
 print(rs)
 
 ts = msprime.sim_ancestry(
-    samples=2,
+    samples=200,
     recombination_rate=1e-8,
     sequence_length=2000,
     population_size=10_000,
     record_full_arg=True,
-    random_seed=5841#7483
+    random_seed=rs #7483,8131
 )
 
-print(ts.draw_text())
+#print(ts.draw_text())
+#print(ts.num_trees)
 
+start = time.time()
 arg = ARGObject(ts=ts)
-calc_cov_matrix(ARG=arg)
+cov_mat = calc_cov_matrix(ARG=arg)
+end = time.time()
+print("HYBRID - Total Execution Time:", round((end - start)/60, 2), "minutes")
+print(cov_mat.shape)
