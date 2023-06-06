@@ -29,7 +29,7 @@ def ts_to_nx(ts, connect_recombination_nodes=False, recomb_nodes=[]):
     nx_graph = nx.MultiDiGraph(topology)
     return nx_graph
 
-def simplify_graph(G):
+def simplify_graph(G, root=-1):
     ''' Loop over the graph until all nodes of degree 2 have been removed and their incident edges fused 
     Adapted from https://stackoverflow.com/questions/53353335/networkx-remove-node-and-reconnect-edges
     '''
@@ -38,7 +38,7 @@ def simplify_graph(G):
     while any(degree==2 for _, degree in g.degree):
         g0 = g.copy() #<- simply changing g itself would cause error `dictionary changed size during iteration` 
         for node, degree in g.degree():
-            if degree==2:
+            if degree==2 and node!=root:
                 if g.is_directed(): #<-for directed graphs
                     a0,b0 = list(g0.in_edges(node))[0]
                     a1,b1 = list(g0.out_edges(node))[0]
@@ -56,11 +56,13 @@ def simplify_graph(G):
 
 
 
+
+
 ts = tskit.load("run1/slim_0.25rep0sigma.trees")
 keep_nodes = list(np.random.choice(ts.samples(), 10, replace=False))
 subset_ts = ts.simplify(samples=keep_nodes, keep_input_roots=True, keep_unary=True)
 nx_arg = ts_to_nx(ts=subset_ts)
-simple_arg = simplify_graph(G=nx_arg)
+simple_arg = simplify_graph(G=nx_arg, root=subset_ts.node(subset_ts.num_nodes-1).id)
 first_unique_bounds = pd.DataFrame({"left":subset_ts.tables.edges.left, "right":subset_ts.tables.edges.right}).drop_duplicates()
 breakpoint_edges = subset_ts.tables.edges[first_unique_bounds.index.tolist()[1:]]
 recomb_nodes = set(breakpoint_edges.child)
