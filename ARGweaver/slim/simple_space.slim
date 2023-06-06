@@ -1,0 +1,99 @@
+//adapted from https://pyslim.readthedocs.io/en/latest/vignette_space.html
+initialize() {
+	 defineConstant("SIGMA_disp", 0.25);
+	 defineConstant("rep", 0);
+    defineConstant("fname", "slim_" + SIGMA_disp + "rep"+rep+ "sigma.trees");
+	 L=1e6;
+    r=1e-8;
+    R=2;
+    SIGMA_int=1;
+    K=1;
+    W=10.0;
+    t=1e4;
+    N0=10000;
+    setSeed(rep); // set seed for repeatability
+    initializeSLiMModelType("nonWF"); // non Wright Fisher
+    initializeSLiMOptions(dimensionality="xy"); // two spatial dimensions
+    initializeTreeSeq(retainCoalescentOnly=F); // record the true tree sequence (and keep unary nodes too, for locating ancestors, later)
+    initializeMutationRate(0.0); // no mutations (add these with msprime)
+    initializeMutationType("m1", 0.5, "f", 0.0); // irrelevant mutation type
+    initializeGenomicElementType("g1", m1, 1.0); // irrelevant genome type
+    initializeGenomicElement(g1, 0, L-1); // length of chromosome
+    initializeRecombinationRate(r); // recombination rate per base
+
+    // spatial interaction for local competition and mate choice
+    initializeInteractionType("i1", "xy", reciprocal=T, maxDistance = 3*SIGMA_int); // define interaction type i1, in two spatial dimensions, where individual A has the same effect on B that B does on A (this speeds up computation), and only individuals within distance 3*SIGMA interact (again to speed things up)  
+    i1.setInteractionFunction("n", 1.0/(2*PI*SIGMA_int^2), SIGMA_int); // convert distance to interaction strength using a Gaussian (n for normal), with maximum value 1/(2*pi*sigma**2) and standard deviation sigma (ie, this is truly and normal PDF with mean 0 and variance sigma**2)
+}
+
+reproduction() {
+    L=1e6;
+    r=1e-8;
+    R=2;
+    SIGMA_int=1;
+    K=1;
+    W=10.0;
+    t=1e4;
+    N0=10000;
+    neighbor_density = i1.totalOfNeighborStrengths(individual); // sum of interaction strengths
+    num_offspring = rpois(1, R / (1 + neighbor_density / K)); // poisson number of offspring with mean R/(1+n_d/K), ie Beverton-Holt density dependence
+    mate = i1.drawByStrength(individual, 1);  // single mate for all offspring (ie monogamy), with mate chosen randomly based on interaction strength
+    if (size(mate) > 0) { // if there is a mate (possible none within interacting distance, in which case there are no offspring produced)
+        for (k in seqLen(num_offspring)) {
+            offspring = p1.addCrossed(individual, mate); //make offspring by sexual reproduction
+            pos = individual.spatialPosition + rnorm(2, 0, SIGMA_disp); // set position of offspring as random normal in both directions
+            offspring.setSpatialPosition(p1.pointReflected(pos)); // put offspring in its place
+        }
+    }
+}
+
+1 early() {
+    L=1e6;
+    r=1e-8;
+    R=2;
+    SIGMA_int=1;
+    K=1;
+    W=10.0;
+    t=1e4;
+    N0=10000;
+    community.rescheduleScriptBlock(s1, start=t, end=t); //set up end of simulation
+    sim.addSubpop("p1", N0); //initial popn size
+    p1.setSpatialBounds(c(0.0, 0.0, W, W)); //set spatial plane
+    //p1.individuals.setSpatialPosition(p1.pointUniform(N0))); // start with uniform distribution across range
+    p1.individuals.setSpatialPosition(c(W/2,W/2));
+}
+
+early() {
+    L=1e6;
+    r=1e-8;
+    R=2;
+    SIGMA_int=1;
+    K=1;
+    W=10.0;
+    t=1e4;
+    N0=10000;
+    //catn(community.tick); 
+    // survival probabilities
+    p1.fitnessScaling = 1;
+    inds = sim.subpopulations.individuals;
+    inds[inds.age > 0].fitnessScaling = 0.0; // remove adults (ie enforce discrete generations)
+    //sim.treeSeqRememberIndividuals(p1.individuals, permanent=F); // retain individuals remaining in the tree sequence (for locating ancestors, later)
+}
+
+late() {
+    L=1e6;
+    r=1e-8;
+    R=2;
+    SIGMA_int=1;
+    K=1;
+    W=10.0;
+    t=1e4;
+    N0=10000;
+    i1.evaluate(p1); //calculate interactions
+}
+
+s1 late () {
+    sim.treeSeqOutput(fname ); //output treesequence
+    catn("Done "+SIGMA_disp);
+    sim.simulationFinished();
+}
