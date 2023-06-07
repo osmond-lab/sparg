@@ -61,12 +61,11 @@ def calc_covariance_matrix(ts):
             continue
         path_ind = Indices[node.id]
         child_nodes = np.unique(edges.child[np.where(edges.parent == node.id)])
-        for path in path_ind:
-            starting_path = Paths[path][:]
-            for i, child in enumerate(child_nodes):
+        for i, child in enumerate(child_nodes):
+            for path in path_ind:
                 if i > 0:
-                    Paths.append(starting_path)
-                    Paths[-1].insert(0, child)
+                    Paths.append(Paths[path][:])
+                    Paths[-1][0] = child
                 else:
                     Paths[path].insert(0, child)
         npaths = len(path_ind)

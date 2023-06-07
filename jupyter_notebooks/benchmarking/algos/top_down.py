@@ -1,3 +1,4 @@
+import tskit
 import msprime
 import random
 import numpy as np
@@ -60,12 +61,11 @@ def calc_covariance_matrix(ts):
             continue
         path_ind = Indices[node.id]
         child_nodes = np.unique(edges.child[np.where(edges.parent == node.id)])
-        for path in path_ind:
-            starting_path = Paths[path][:]
-            for i, child in enumerate(child_nodes):
+        for i, child in enumerate(child_nodes):
+            for path in path_ind:
                 if i > 0:
-                    Paths.append(starting_path)
-                    Paths[-1].insert(0, child)
+                    Paths.append(Paths[path][:])
+                    Paths[-1][0] = child
                 else:
                     Paths[path].insert(0, child)
         npaths = len(path_ind)
@@ -220,6 +220,12 @@ def reconstruct_node_locations(ts, sample_locs):
     return paths, node_times, node_locs, dispersal_rate
 
 
+def get_dispersal_and_gmrca(file):
+    ts = tskit.load(file)
+    sample_locs = np.linspace(0, 1, ts.num_samples)
+    paths, times, locations, dispersal_rate = reconstruct_node_locations(ts=ts, sample_locs=sample_locs)
+    return dispersal_rate, locations[-1]
+
 
 if __name__ == "__main__":
     
@@ -237,16 +243,3 @@ if __name__ == "__main__":
 
     sample_locs = np.linspace(0, 1, ts.num_samples)
     paths, times, locations, dispersal_rate = reconstruct_node_locations(ts=ts, sample_locs=sample_locs)
-    
-    exit()
-    print(dispersal_rate)
-
-
-    for p in paths:
-        p_times = []
-        p_locs = []
-        for n in p:
-            p_times.append(times[n])
-            p_locs.append(locations[n])
-        plt.plot(p_locs, p_times)
-    plt.show()

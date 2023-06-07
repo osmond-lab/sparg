@@ -59,7 +59,7 @@ def simplify_graph(G, root=-1):
 
 
 ts = tskit.load("run1/slim_0.25rep0sigma.trees")
-keep_nodes = list(np.random.choice(ts.samples(), 10, replace=False))
+keep_nodes = [0, 85, 141, 7, 9, 11, 5, 10, 12, 121] #list(np.random.choice(ts.samples(), , replace=False))
 subset_ts = ts.simplify(samples=keep_nodes, keep_input_roots=True, keep_unary=True)
 nx_arg = ts_to_nx(ts=subset_ts)
 simple_arg = simplify_graph(G=nx_arg, root=subset_ts.node(subset_ts.num_nodes-1).id)
@@ -125,13 +125,31 @@ for edge in simple_arg.edges:
         
 tables.sort()
 final_ts = tables.tree_sequence()
+print(final_ts.draw_text())
 
-print(final_ts.tables.nodes)
-print(final_ts.tables.edges)
-print(final_ts.tables.nodes.time)
+import sys
+sys.path.append("/Users/jameskitchens/Documents/GitHub/tskit_arg_visualizer/visualizer")
+import visualizer
 
-print(final_ts.first().draw_text())
-        
+d3arg = visualizer.D3ARG(ts=final_ts)
+#d3arg.draw(width=1000, height=750, line_type="line", y_axis_scale="log_time")
+
+sample_locs = subset_ts.tables.individuals.location[::3]
+fixed_sample_locs = []
+for loc in sample_locs:
+    for i in range(2):
+        fixed_sample_locs.append(loc)
+
+import sys
+sys.path.append("/Users/jameskitchens/Documents/GitHub/sparg2.0/ARGweaver/msprime")
+import top_down
+
+cov_mat = top_down.calc_covariance_matrix(ts=final_ts)
+
+paths, node_times, node_locs, dispersal_rate = top_down.reconstruct_node_locations(ts=final_ts, sample_locs=fixed_sample_locs)
+for p in paths[-25:]:
+    print(p)
+print(dispersal_rate)
 
 
 """
