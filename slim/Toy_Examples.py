@@ -134,20 +134,20 @@ def MLE(S_inv, loc, n) :
 
 
 def ARG_estimate(ts): 
-    CM, indices = top_down.calc_covariance_matrix(ts)  
+    CM, indices, rootind = top_down.calc_covariance_matrix(ts)  
     # print(CM)
     # S = [ i for i,row in enumerate(ts.tables.nodes) if row.flags == 1 ] 
     S = list(ts.samples())
     # print(S, indices)
     loc = np.zeros((CM.shape[0],1))
     for i in S: 
-        print(i)
+        # print(i)
         for j in indices[i]:
             ind = ts.tables.nodes[i].individual
             # print(ind)
             loc[j][0] = ts.tables.individuals[ind].location[0]
     CMinv = np.linalg.pinv(CM)
-    print(CMinv, loc)
+    # print(CMinv, loc)
     mu, sigma = MLE(CMinv, loc, len(S))
     return mu, sigma
 
@@ -163,7 +163,7 @@ def Tree_estimates(ts):
         tree = ts.keep_intervals( np.array([[breakpoints[i],breakpoints[i+1]]]), simplify=False ) 
         tree = tree.rtrim()
         # print(tree.tables.edges)
-        CM, indices = top_down.calc_covariance_matrix(tree)  
+        CM, indices, rootind = top_down.calc_covariance_matrix(tree)  
         loc = np.zeros((CM.shape[0],1))
         for i in S: 
             for j in indices[i]:
@@ -316,7 +316,7 @@ if __name__ == "__main__":
     # fig.suptitle('Single Isolated Loop (Bubble)', fontsize = 17)
     
     
-    # """ Single Compound Loop """
+    """ Single Compound Loop """
     
     # x_range = np.arange(0.126,0.98,0.01)
     # mu_fullARG = [] 
@@ -408,7 +408,7 @@ if __name__ == "__main__":
     # fig.suptitle('Single Compound Loop', fontsize = 17)
     
     
-    # """ Double Compound """
+    """ Double Compound """
     
     # x_range = np.arange(0.51,0.98,0.01)
     # mu_fullARG = [] 
@@ -592,7 +592,7 @@ if __name__ == "__main__":
     # ax[3][1].set_ylabel('Location of the MRCA', fontsize = 13)
     # fig.suptitle('Double Compound Loop', fontsize = 17)
     
-    # """ Single Compound Loop - 3 sample"""
+    """ Single Compound Loop - 3 sample"""
     
     # x_range = np.arange(0.126,0.74,0.01)
     # mu_fullARG = [] 
@@ -699,9 +699,9 @@ if __name__ == "__main__":
     #     mu_fullARG += [ mu[0][0] ]
     #     sigma_fullARG += [ sigma[0][0] ]
         
-        # mu_tree, sigma_tree = Tree_estimates(ts)
-        # mu_trees += [mu_tree]
-        # sigma_trees += [sigma_tree]
+    #     mu_tree, sigma_tree = Tree_estimates(ts)
+    #     mu_trees += [mu_tree]
+    #     sigma_trees += [sigma_tree]
         
     #     mu_wohns += [Wilder_Wohns_mu(ts, weighted = False)]
     #     mu_wohns_mod += [ Wilder_Wohns_mu(ts) ]
@@ -733,59 +733,61 @@ if __name__ == "__main__":
     # ts_stack = ts_stacked(x=500,n = 100)
     # ts_stack = ts_stack.rtrim() 
     
-    # ts_stack = msprime.sim_ancestry(
-    #     samples=10,
-    #     recombination_rate=1e-7,
-    #     sequence_length=2_000,
-    #     population_size=10_000,
-    #     record_full_arg=True,
-    #     # random_seed=9203
-    # )
+    ts_stack = msprime.sim_ancestry(
+        samples=10,
+        recombination_rate=1e-7,
+        sequence_length=2_000,
+        population_size=10_000,
+        record_full_arg=True,
+        # random_seed=9203
+    )
     
-    # tstables = ts_stack.dump_tables()
-    # loc_list = [] 
-    # for ind in tstables.individuals : 
-    #     loc_list += [ [ np.random.uniform(-100,100) ] ]
+    tstables = ts_stack.dump_tables()
+    loc_list = [] 
+    for ind in tstables.individuals : 
+        loc_list += [ [ np.random.uniform(-100,100) ] ]
         
-    # tstables.individuals.packset_location(np.array( loc_list ))
-    # tstables.sort()
-    # ts_stack = tstables.tree_sequence()
+    tstables.individuals.packset_location(np.array( loc_list ))
+    tstables.sort()
+    ts_stack = tstables.tree_sequence()
     
-    # sigma_list = []
-    # mu_list = [] 
-    # breakpoints = list(ts_stack.breakpoints()) 
-    # rng = range(1,len(breakpoints))
+    sigma_list = []
+    mu_list = [] 
+    breakpoints = list(ts_stack.breakpoints()) 
+    rng = range(1,len(breakpoints))
     
     # print(len(list(ts_stack.trees())))
     
-    # for i in rng: 
-    #     print(i)
-    #     ts = ts_stack.keep_intervals(np.array([[0,breakpoints[i]]]))
-    #     ts = ts.rtrim()
-    #     mu, sigma = ARG_estimate(ts)
-    #     sigma_list += [sigma[0][0]]
-    # fig, ax = plt.subplots() 
+    for i in rng: 
+        # print(i)
+        ts = ts_stack.keep_intervals(np.array([[0,breakpoints[i]]]))
+        ts = ts.rtrim()
+        mu, sigma = ARG_estimate(ts)
+        sigma_list += [sigma[0][0]]
+    fig, ax = plt.subplots() 
     
-    # mu_tree, sigma_tree = Tree_estimates(ts_stack)
+    mu_tree, sigma_tree = Tree_estimates(ts_stack)
     
-    # # for sig in sigma_tree: 
-    # #     ax.axhline(y=sig, linestyle = 'dashed')
+    # for sig in sigma_tree: 
+    #     ax.axhline(y=sig, linestyle = 'dashed')
     
        
-    # ax2 = ax.twinx()
+    ax2 = ax.twinx()
     
-    # lns3 = ax2.plot( rng, [ tree.roots[0] for tree in ts_stack.trees() ], color = 'red', label = 'Marginal Tree Height')
-    # lns1 = ax.plot(rng, sigma_tree, linestyle = 'dashed', label = 'Marginal Tree Estimate', color = 'blue')
-    # lns2 = ax.plot( rng,sigma_list, label = 'ARG Estimate (Partial Sequences)', color = 'blue' )
+    lns3 = ax2.plot( rng, [ tree.roots[0] for tree in ts_stack.trees() ], color = 'red', label = 'Marginal Tree Height')
+    lns1 = ax.plot(rng, sigma_tree, linestyle = 'dashed', label = 'Marginal Tree Estimate', color = 'blue')
+    lns2 = ax.plot( rng,sigma_list, label = 'ARG Estimate (Partial Sequences)', color = 'blue' )
     
     
-    # ax2.set_ylabel('time of tree')
-    # ax.set_ylabel('Dispersal Estimates (in blue)', color = 'blue')
-    # ax2.set_ylabel('Time of each marginal tree (in red)', color = 'red')
+    ax2.set_ylabel('time of tree')
+    ax.set_ylabel('Dispersal Estimates (in blue)', color = 'blue', fontsize = 13)
+    ax.set_xlabel('Number of Trees', fontsize = 13)
+    ax2.set_ylabel('Time of each marginal tree (in red)', color = 'red')
     
-    # lns = lns1+lns2+lns3
-    # labs = [l.get_label() for l in lns]
-    # ax.legend(lns, labs, loc=0)
+    lns = lns1+lns2+lns3
+    # lns = lns1+lns2
+    labs = [l.get_label() for l in lns]
+    ax.legend(lns, labs, loc=0)
     
     """ Add Recombination Nodes """ 
     # ts = ts_doublecompound()
