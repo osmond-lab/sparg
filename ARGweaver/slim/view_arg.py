@@ -80,6 +80,16 @@ for i in simple_arg.nodes:
     if (len(set(is_parent.child)) == 1) & (len(set(is_child.parent)) > 1) & ((len(is_parent) + len(is_child)) % 2 != 0):
         recomb_nodes.append(i)
 
+"""
+recomb_nodes = []
+for i in simple_arg.nodes:
+    is_parent = subset_ts.tables.edges[np.where(subset_ts.tables.edges.parent==i)[0]]
+    is_child = subset_ts.tables.edges[np.where(subset_ts.tables.edges.child==i)[0]]
+    if (len(is_parent) > len(is_child)):
+        recomb_nodes.append(i)
+"""
+
+
 tables = tskit.TableCollection(sequence_length=subset_ts.sequence_length)
 tables.nodes.metadata_schema = tskit.MetadataSchema.permissive_json()
 
@@ -120,7 +130,6 @@ for node in sorted(simple_arg.nodes):
         simple_recomb_nodes.append(counter-1)
         counter += 1
 
-print(simple_recomb_nodes)
 
 node_lookup = pd.DataFrame({"subset_ts_id":subset_ts_id, "simple_id":simple_id})
 
@@ -145,14 +154,17 @@ def mergeIntervals(intervals):
             stack.append(i)
     return stack
 
+
 children = []
 parents = []
 left = []
 right = []
 already_found = []
 for edge in simple_arg.edges:
-    child_edges = subset_ts.tables.edges[np.where(subset_ts.tables.edges.child==edge[0])[0]]
-    parent_edges = subset_ts.tables.edges[np.where(subset_ts.tables.edges.parent==edge[1])[0]]
+    child = min(edge[0], edge[1])
+    parent = max(edge[0], edge[1])
+    child_edges = subset_ts.tables.edges[np.where(subset_ts.tables.edges.child==child)[0]]
+    parent_edges = subset_ts.tables.edges[np.where(subset_ts.tables.edges.parent==parent)[0]]
     found = False
     for ce in child_edges:
         for pe in parent_edges:
@@ -162,8 +174,8 @@ for edge in simple_arg.edges:
                 break
         if found:
             break
-    children.append(node_lookup["simple_id"].values[(node_lookup["subset_ts_id"].values==edge[0]).argmax()])
-    parents.append(node_lookup["simple_id"].values[(node_lookup["subset_ts_id"].values==edge[1]).argmax()])
+    children.append(node_lookup["simple_id"].values[(node_lookup["subset_ts_id"].values==child).argmax()])
+    parents.append(node_lookup["simple_id"].values[(node_lookup["subset_ts_id"].values==parent).argmax()])
     left.append(ce.left)
     right.append(ce.right)
     #if edge[0] not in recomb_nodes:
@@ -173,21 +185,48 @@ for edge in simple_arg.edges:
     #            parents.append(node_lookup["simple_id"].values[(node_lookup["subset_ts_id"].values==edge[1]).argmax()])
     #            left.append(alt_ce.left)
     #            right.append(alt_ce.right)
-simple_edges = pd.DataFrame({"parent":parents, "child":children, "left":left, "right":right})
 
+simple_edges = pd.DataFrame({"parent":parents, "child":children, "left":left, "right":right})
 for recomb in simple_recomb_nodes:
     is_parent = simple_edges.loc[simple_edges["parent"]==recomb]
     is_child = simple_edges.loc[simple_edges["child"]==recomb]
-    simple_edges.at[is_parent.index.values[0],"left"] = is_child["left"].iloc[0]
-    simple_edges.at[is_parent.index.values[0],"right"] = is_child["right"].iloc[0]
-    simple_edges.at[is_child.index.values[1],"child"] = recomb + 1
-    new_row = pd.DataFrame({
-            "parent":[recomb+1],
-            "child":[is_parent["child"].iloc[0]],
-            "left":[is_child["left"].iloc[1]],
-            "right":[is_child["right"].iloc[1]]
-        })
-    simple_edges = pd.concat([simple_edges, new_row], ignore_index=True)
+    if len(is_child) > 2:
+        #print(recomb)
+        #print(is_parent)
+        #print(is_child)
+        associated_edges = defaultdict(list)
+        for pi, parent_edge in is_parent.iterrows():
+            for ci, child_edge in is_child.iterrows():
+                if (child_edge["left"] >= parent_edge["left"]) and (child_edge["right"] <= parent_edge["right"]):
+                    # child is within the region of the parent
+                    associated_edges[pi].append(ci)
+        for i, pi in enumerate(associated_edges):
+            for j, ci in enumerate(associated_edges[pi]):
+                #print(pi, ci)
+                if j > 0:
+                    new_row = pd.DataFrame({
+                        "parent":[recomb+j],
+                        "child":[is_parent["child"].loc[pi]],
+                        "left":[is_child["left"].loc[ci]],
+                        "right":[is_child["right"].loc[ci]]
+                    })
+                    simple_edges = pd.concat([simple_edges, new_row], ignore_index=True)
+                else:
+                    simple_edges.at[pi, "parent"] = recomb+j
+                    simple_edges.at[pi, "left"] = simple_edges.at[ci, "left"]
+                    simple_edges.at[pi, "right"] = simple_edges.at[ci, "right"]
+                simple_edges.at[ci, "child"] = recomb+j
+    else:
+        simple_edges.at[is_parent.index.values[0],"left"] = is_child["left"].iloc[0]
+        simple_edges.at[is_parent.index.values[0],"right"] = is_child["right"].iloc[0]
+        simple_edges.at[is_child.index.values[1],"child"] = recomb + 1
+        new_row = pd.DataFrame({
+                "parent":[recomb+1],
+                "child":[is_parent["child"].iloc[0]],
+                "left":[is_child["left"].iloc[1]],
+                "right":[is_child["right"].iloc[1]]
+            })
+        simple_edges = pd.concat([simple_edges, new_row], ignore_index=True)
 simple_edges = simple_edges.sort_values("parent").reset_index(drop=True)
 
 edge_table = tables.edges
@@ -202,14 +241,9 @@ for index, edge in simple_edges.iterrows():
 tables.sort()
 final_ts = tables.tree_sequence()
 
-print(node_lookup["subset_ts_id"].values[(node_lookup["simple_id"].values==54).argmax()])
-print(edge_table[np.where(edge_table.parent==54)[0]])
-print(edge_table[np.where(edge_table.child==54)[0]])
-print(subset_ts.tables.edges[np.where(subset_ts.tables.edges.parent==604)[0]])
-print(subset_ts.tables.edges[np.where(subset_ts.tables.edges.child==604)[0]])
-
 all_tree_common_ancestors = []
 for tree in final_ts.trees():
+    print(tree.draw_text())
     common_ancestor = []
     for node in tree.nodes():
         if tree.num_samples(node) == final_ts.num_samples:
@@ -217,11 +251,8 @@ for tree in final_ts.trees():
     if len(common_ancestor) > 0:
         all_tree_common_ancestors.append(min(common_ancestor))
     else:
-        #print(tree.draw_text())
         all_tree_common_ancestors.append(final_ts.node(final_ts.num_nodes-1).id)
 gmrca = max(all_tree_common_ancestors)
-
-exit()
 
 tables = tskit.TableCollection(sequence_length=subset_ts.sequence_length)
 tables.nodes.metadata_schema = tskit.MetadataSchema.permissive_json()
