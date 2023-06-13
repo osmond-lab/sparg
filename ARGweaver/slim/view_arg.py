@@ -37,41 +37,47 @@ def ts_to_nx_updated(ts):
     nx_graph = nx.MultiDiGraph(topology)
     return nx_graph
 
-def simplify_graph(G, root=-1):
+ts = tskit.load("run1/slim_0.25rep3sigma.trees")
+np.random.seed(1)
+keep_nodes = list(np.random.choice(ts.samples(), 50, replace=False))
+subset_ts = ts.simplify(samples=keep_nodes, keep_input_roots=True, keep_unary=True)
+nx_arg = ts_to_nx_updated(ts=subset_ts)
+
+critical_nodes = []
+for node in subset_ts.nodes():
+    is_parent = subset_ts.tables.edges[np.where(subset_ts.tables.edges.parent==node.id)[0]]
+    is_child = subset_ts.tables.edges[np.where(subset_ts.tables.edges.child==node.id)[0]]
+    if (len(np.unique(is_parent.child)) != len(np.unique(is_child.parent))):
+        if (len(is_parent.child) != len(is_child.parent)) or (len(np.unique(is_parent.child)) > len(np.unique(is_child.parent))):
+            critical_nodes.append(node.id)
+
+def simplify_graph(G, keep):
     ''' Loop over the graph until all nodes of degree 2 have been removed and their incident edges fused 
     Adapted from https://stackoverflow.com/questions/53353335/networkx-remove-node-and-reconnect-edges
     '''
-
     g = G.copy()
-    while any(degree==2 for _, degree in g.degree):
+    while any((node not in keep) for node in g.nodes):
         g0 = g.copy() #<- simply changing g itself would cause error `dictionary changed size during iteration` 
-        for node, degree in g.degree():
-            if degree==2 and node!=root:
-                if g.is_directed(): #<-for directed graphs
-                    a0,b0 = list(g0.in_edges(node))[0]
-                    a1,b1 = list(g0.out_edges(node))[0]
-                else:
-                    edges = g0.edges(node)
-                    edges = list(edges.__iter__())
-                    a0,b0 = edges[0]
-                    a1,b1 = edges[1]
-                e0 = a0 if a0!=node else b0
-                e1 = a1 if a1!=node else b1
+        for node in g.nodes:
+            if node not in keep:
+                in_list = list(g0.in_edges(node))
+                out_list = list(g0.out_edges(node))
+                previously_found = []
+                for in_edge in in_list:
+                    a0,b0 = in_edge
+                    for out_edge in out_list:
+                        if (out_edge not in previously_found) and (out_edge[0] == b0):
+                            a1,b1 = out_edge
+                            previously_found.append(out_edge)
+                            break
+                    e0 = a0 if a0!=node else b0
+                    e1 = a1 if a1!=node else b1
+                    g0.add_edge(e0, e1)
                 g0.remove_node(node)
-                g0.add_edge(e0, e1)
         g = g0
     return g
 
-
-
-
-
-ts = tskit.load("run1/slim_0.25rep3sigma.trees")
-np.random.seed(1)
-keep_nodes = list(np.random.choice(ts.samples(), 20, replace=False))
-subset_ts = ts.simplify(samples=keep_nodes, keep_input_roots=True, keep_unary=True)
-nx_arg = ts_to_nx_updated(ts=subset_ts)
-simple_arg = simplify_graph(G=nx_arg, root=subset_ts.node(subset_ts.num_nodes-1).id)
+simple_arg = simplify_graph(G=nx_arg, keep=critical_nodes)
 
 recomb_nodes = []
 for i in simple_arg.nodes:
@@ -79,17 +85,7 @@ for i in simple_arg.nodes:
     is_child = subset_ts.tables.edges[np.where(subset_ts.tables.edges.child==i)[0]]
     if (len(set(is_parent.child)) == 1) & (len(set(is_child.parent)) > 1) & ((len(is_parent) + len(is_child)) % 2 != 0):
         recomb_nodes.append(i)
-
-"""
-recomb_nodes = []
-for i in simple_arg.nodes:
-    is_parent = subset_ts.tables.edges[np.where(subset_ts.tables.edges.parent==i)[0]]
-    is_child = subset_ts.tables.edges[np.where(subset_ts.tables.edges.child==i)[0]]
-    if (len(is_parent) > len(is_child)):
-        recomb_nodes.append(i)
-"""
-
-
+        
 tables = tskit.TableCollection(sequence_length=subset_ts.sequence_length)
 tables.nodes.metadata_schema = tskit.MetadataSchema.permissive_json()
 
@@ -130,9 +126,7 @@ for node in sorted(simple_arg.nodes):
         simple_recomb_nodes.append(counter-1)
         counter += 1
 
-
 node_lookup = pd.DataFrame({"subset_ts_id":subset_ts_id, "simple_id":simple_id})
-
 
 def check_range_overlap(start1, stop1, start2, stop2):
     """Checks if two ranges overlap. Returns corresponding boolean"""
@@ -178,22 +172,14 @@ for edge in simple_arg.edges:
     parents.append(node_lookup["simple_id"].values[(node_lookup["subset_ts_id"].values==parent).argmax()])
     left.append(ce.left)
     right.append(ce.right)
-    #if edge[0] not in recomb_nodes:
-    #    for alt_ce in child_edges:
-    #        if (alt_ce.parent == ce.parent) and (alt_ce.child == ce.child) and (alt_ce.left != ce.left) and (alt_ce.right != ce.right):
-    #            children.append(node_lookup["simple_id"].values[(node_lookup["subset_ts_id"].values==edge[0]).argmax()])
-    #            parents.append(node_lookup["simple_id"].values[(node_lookup["subset_ts_id"].values==edge[1]).argmax()])
-    #            left.append(alt_ce.left)
-    #            right.append(alt_ce.right)
 
 simple_edges = pd.DataFrame({"parent":parents, "child":children, "left":left, "right":right})
+
+
 for recomb in simple_recomb_nodes:
     is_parent = simple_edges.loc[simple_edges["parent"]==recomb]
     is_child = simple_edges.loc[simple_edges["child"]==recomb]
     if len(is_child) > 2:
-        #print(recomb)
-        #print(is_parent)
-        #print(is_child)
         associated_edges = defaultdict(list)
         for pi, parent_edge in is_parent.iterrows():
             for ci, child_edge in is_child.iterrows():
@@ -241,9 +227,11 @@ for index, edge in simple_edges.iterrows():
 tables.sort()
 final_ts = tables.tree_sequence()
 
+print(final_ts.tables.edges[np.where(final_ts.tables.edges.parent==89)[0]])
+print(final_ts.tables.edges[np.where(final_ts.tables.edges.child==89)[0]])
+
 all_tree_common_ancestors = []
 for tree in final_ts.trees():
-    print(tree.draw_text())
     common_ancestor = []
     for node in tree.nodes():
         if tree.num_samples(node) == final_ts.num_samples:
@@ -251,6 +239,7 @@ for tree in final_ts.trees():
     if len(common_ancestor) > 0:
         all_tree_common_ancestors.append(min(common_ancestor))
     else:
+        #print(tree.draw_text())
         all_tree_common_ancestors.append(final_ts.node(final_ts.num_nodes-1).id)
 gmrca = max(all_tree_common_ancestors)
 
@@ -281,35 +270,4 @@ sys.path.append("/Users/jameskitchens/Documents/GitHub/tskit_arg_visualizer/visu
 import visualizer
 
 d3arg = visualizer.D3ARG(ts=condensed_ts)
-d3arg.draw(width=1000, height=1000, line_type="line", y_axis_scale="rank")
-
-ts_locs = subset_ts.tables.individuals.location[::3]
-individual_list = subset_ts.tables.nodes[np.where(subset_ts.tables.nodes.flags==1)[0]].individual
-sample_locs = ts_locs[individual_list]
-
-import sys
-sys.path.append("/Users/jameskitchens/Documents/GitHub/sparg2.0/ARGweaver/msprime")
-import top_down
-
-paths, node_times, node_locs, dispersal_rate = top_down.reconstruct_node_locations(ts=condensed_ts, sample_locs=sample_locs)
-
-print(dispersal_rate)
-
-for p in paths:
-    p_times = []
-    p_locs = []
-    for n in p:
-        p_times.append(node_times[n])
-        p_locs.append(node_locs[n])
-    plt.plot(p_locs, p_times)
-plt.show()
-
-
-"""
-import sys
-sys.path.append("/Users/jameskitchens/Documents/GitHub/tskit_arg_visualizer/visualizer")
-import visualizer
-
-d3arg = visualizer.D3ARG(ts=final_ts)
-d3arg.draw(width=1000, height=750, line_type="ortho", y_axis_scale="rank")
-"""
+d3arg.draw(width=2000, height=2000, line_type="line", y_axis_scale="rank")

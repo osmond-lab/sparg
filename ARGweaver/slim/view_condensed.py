@@ -6,4 +6,4 @@ import visualizer
 
 ts = tskit.load("condensed.trees")
 d3arg = visualizer.D3ARG(ts=ts)
-d3arg.draw(width=1000, height=1500, line_type="ortho", y_axis_scale="rank")
+d3arg.draw(width=2500, height=2500, line_type="ortho", y_axis_scale="rank")
