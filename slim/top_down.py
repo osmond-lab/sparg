@@ -4,7 +4,8 @@ import numpy as np
 from collections import defaultdict
 import time
 import Toy_Examples
-
+import sympy as sym
+import matplotlib.pyplot as plt
 
 def calc_covariance_matrix(ts):
     nodes_id = sorted(np.unique(list(ts.tables.edges.parent) + list(ts.tables.edges.child)))
@@ -82,18 +83,64 @@ def MLE(S_inv, loc, rootind, n) :
     D  = np.zeros((k,lenloc))
     for i,root in enumerate(roots): 
         D[i][np.where( np.array(rootind) == root)[0]] += 1.0
-    mu_list = np.linalg.solve(np.matmul(D,np.matmul(S_inv,np.transpose(D))), np.matmul(D,np.matmul(S_inv,loc)))
-    # print(mu_list)
-    for i,root in enumerate(roots):
-        print(i,roots,len(mu_vect),np.where( np.array(rootind) == root),mu_vect,mu_list)
-        mu_vect[np.where( np.array(rootind) == root)[0]][1] += mu_list[i] 
-    print(mu_vect)
-    # mu = np.matmul(np.matmul(np.transpose(one_vect), S_inv),loc) / np.matmul(np.matmul(np.transpose(one_vect), S_inv),one_vect)
-    # sigma = np.matmul(np.matmul(np.transpose(loc - mu*one_vect), S_inv), (loc - mu*one_vect))/n
     
-    sigma = np.matmul(np.matmul(np.transpose(loc - mu_vect), S_inv), (loc - mu_vect))/n
+    A = np.matmul(D,np.matmul(S_inv,np.transpose(D))) #Matrix of coefficients of the system of linear equations 
+    b = np.matmul(D,np.matmul(S_inv,loc)) #Vector of constants of the system of linear equations. 
+    augmented_matrix = np.column_stack((A, b)) # Construct the augmented matrix [A|b]
+    rre_form, pivots = sym.Matrix(augmented_matrix).rref() # Perform row reduction on the augmented matrix
+    null_space = sym.Matrix(A).nullspace() # Find the basis of the null space of A i.e. all x such that Ax = 0
     
-    return mu_list, sigma
+    if len(pivots) == A.shape[0]:
+        if int(A.shape[0]) in pivots: 
+            raise TypeError("No Solutions")
+        else: 
+            print("Unique Solution")
+            mu_list = np.array(rre_form.col(-1))
+            mu_vect = np.matmul(np.transpose(D),mu_list)    
+            sigma = np.matmul(np.matmul(np.transpose(loc - mu_vect), S_inv), (loc - mu_vect))/n
+            return mu_list, sigma[0][0]
+    else: 
+        print("Multiple Solution", D, roots, null_space)
+        mu_particular = rre_form.col(-1)
+        sigma_list = []
+        
+        for rep in range(20): 
+            mu_list = mu_particular
+            for col in null_space:
+                a = np.random.uniform(-50,50)
+                mu_list += a*col
+            mu_vect = np.matmul(np.transpose(D),mu_list)    
+            sigma = np.matmul(np.matmul(np.transpose(loc - mu_vect), S_inv), (loc - mu_vect))/n
+            sigma_list += [float(sigma[0][0])]
+        print(sigma_list)
+        print( np.average(sigma_list))
+        return mu_list, np.average(sigma_list)
+    
+
+# def MLE(S_inv, loc, rootind, n) :  
+#     S_inv = np.array(S_inv)
+#     lenloc = len(loc)
+#     # one_vect = np.ones((lenloc,1)) 
+#     mu_vect = np.zeros((lenloc,1)) 
+#     roots = np.unique(rootind)
+#     k = len(roots)
+#     D  = np.zeros((k,lenloc))
+#     for i,root in enumerate(roots): 
+#         D[i][np.where( np.array(rootind) == root)[0]] += 1.0
+    
+    
+#     mu_list = np.linalg.solve(np.matmul(D,np.matmul(S_inv,np.transpose(D))), np.matmul(D,np.matmul(S_inv,loc)))
+#     # print(mu_list)
+#     for i,root in enumerate(roots):
+#         print(i,roots,len(mu_vect),np.where( np.array(rootind) == root),mu_vect,mu_list)
+#         mu_vect[np.where( np.array(rootind) == root)[0]][1] += mu_list[i] 
+#     print(mu_vect)
+#     # mu = np.matmul(np.matmul(np.transpose(one_vect), S_inv),loc) / np.matmul(np.matmul(np.transpose(one_vect), S_inv),one_vect)
+#     # sigma = np.matmul(np.matmul(np.transpose(loc - mu*one_vect), S_inv), (loc - mu*one_vect))/n
+    
+#     sigma = np.matmul(np.matmul(np.transpose(loc - mu_vect), S_inv), (loc - mu_vect))/n
+    
+#     return mu_list, sigma
 
 
 def ARG_estimate(ts): 
@@ -116,25 +163,30 @@ def benchmark(ts):
     return end-start, cov_mat.sum(), "NA"
 
 if __name__ == "__main__":
+    sigma_plot = []
+    t_rng = np.arange(0,2.5,0.01)
+    for t in t_rng:
+        ts = Toy_Examples.ts_stacked(n=3)
+        # ts = ts.decapitate(time=1.25)
+        ts = ts.decapitate(time=t)
+        # CM, Ind, RootInd = calc_covariance_matrix(ts)
+        mu, sigma = ARG_estimate(ts)
+        sigma_plot += [sigma] 
+        print(t,sigma)
+    plt.plot(t_rng, sigma_plot)
     
-    ts = Toy_Examples.ts_singlecompound_3sam()
-    # ts = ts.decapitate(time=0.9)
-    # CM, Ind, RootInd = calc_covariance_matrix(ts)
-    mu, sigma = ARG_estimate(ts)
-    # print(CM)
-    
-    #for i in range(1000):
+    # for i in range(1000):
     # rs = random.randint(0,10000)
     # print(rs)
     # ts = msprime.sim_ancestry(
-    #     samples=2,
+    #     samples=3,
     #     recombination_rate=1e-8,
     #     sequence_length=2_000,
     #     population_size=10_000,
     #     record_full_arg=True,
-    #     random_seed=9203
+    #     random_seed=rs
     # )
-    
+    # mu, sigma = ARG_estimate(ts)
     
     
     # print(ts.draw_text())
