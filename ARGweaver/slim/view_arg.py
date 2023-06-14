@@ -8,53 +8,49 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 
-def ts_to_nx(ts, connect_recombination_nodes=False, recomb_nodes=[]):
-    """
-    Converts tskit tree sequence to networkx graph.
+def ts_to_nx(ts, fully_connected=False, connect_recombination_nodes=False, recomb_nodes=[]):
+    """Converts tskit tree sequence to networkx graph.
     """
     topology = defaultdict(list)
-    for tree in ts.trees():
-        for k, v in chain(tree.parent_dict.items()):
-            if connect_recombination_nodes:
-                if recomb_nodes == []:
-                    recomb_nodes = list(np.where(ts.tables.nodes.flags == 131072)[0])
-                if v in recomb_nodes and recomb_nodes.index(v)%2 == 1:
-                    v -= 1
-                if k in recomb_nodes and recomb_nodes.index(k)%2 == 1:
-                    k -= 1
-                if v not in topology[k]:
-                    topology[k].append(v)
-            else:
-                if v not in topology[k]:
-                    topology[k].append(v)
+    if fully_connected:
+        for edge in ts.tables.edges:
+            topology[edge.parent].append(edge.child)
+    else:
+        for tree in ts.trees():
+            for k, v in chain(tree.parent_dict.items()):
+                if connect_recombination_nodes:
+                    if recomb_nodes == []:
+                        recomb_nodes = list(np.where(ts.tables.nodes.flags == 131072)[0])
+                    if v in recomb_nodes and recomb_nodes.index(v)%2 == 1:
+                        v -= 1
+                    if k in recomb_nodes and recomb_nodes.index(k)%2 == 1:
+                        k -= 1
+                    if v not in topology[k]:
+                        topology[k].append(v)
+                else:
+                    if v not in topology[k]:
+                        topology[k].append(v)
     nx_graph = nx.MultiDiGraph(topology)
     return nx_graph
 
-def ts_to_nx_updated(ts):
-    topology = defaultdict(list)
-    for edge in ts.tables.edges:
-        topology[edge.parent].append(edge.child)
-    nx_graph = nx.MultiDiGraph(topology)
-    return nx_graph
-
-ts = tskit.load("run1/slim_0.25rep3sigma.trees")
-np.random.seed(1)
-keep_nodes = list(np.random.choice(ts.samples(), 50, replace=False))
-subset_ts = ts.simplify(samples=keep_nodes, keep_input_roots=True, keep_unary=True)
-nx_arg = ts_to_nx_updated(ts=subset_ts)
-
-critical_nodes = []
-for node in subset_ts.nodes():
-    is_parent = subset_ts.tables.edges[np.where(subset_ts.tables.edges.parent==node.id)[0]]
-    is_child = subset_ts.tables.edges[np.where(subset_ts.tables.edges.child==node.id)[0]]
-    if (len(np.unique(is_parent.child)) != len(np.unique(is_child.parent))):
-        if (len(is_parent.child) != len(is_child.parent)) or (len(np.unique(is_parent.child)) > len(np.unique(is_child.parent))):
-            critical_nodes.append(node.id)
+def identify_critical_nodes(ts):
+    """Identifies nodes that affect the topology of the graph.
+    
+    These include tips, root, coalescent, and recombination nodes.
+    """
+    critical_nodes = []
+    for node in ts.nodes():
+        is_parent = ts.tables.edges[np.where(ts.tables.edges.parent==node.id)[0]]
+        is_child = ts.tables.edges[np.where(ts.tables.edges.child==node.id)[0]]
+        if (len(np.unique(is_parent.child)) != len(np.unique(is_child.parent))):
+            if (len(is_parent.child) != len(is_child.parent)) or (len(np.unique(is_parent.child)) > len(np.unique(is_child.parent))):
+                critical_nodes.append(node.id)
+    return critical_nodes
 
 def simplify_graph(G, keep):
-    ''' Loop over the graph until all nodes of degree 2 have been removed and their incident edges fused 
+    """Loop over the graph until all nodes not in keep list have been removed and their incident edges fused 
     Adapted from https://stackoverflow.com/questions/53353335/networkx-remove-node-and-reconnect-edges
-    '''
+    """
     g = G.copy()
     while any((node not in keep) for node in g.nodes):
         g0 = g.copy() #<- simply changing g itself would cause error `dictionary changed size during iteration` 
@@ -77,14 +73,74 @@ def simplify_graph(G, keep):
         g = g0
     return g
 
+def identify_recombination_nodes(ts, nodes=[]):
+    """Returns the IDs of the recombination nodes when each recombination only has one ID
+    This is different than the usual tskit method of identifying recombination nodes.
+    """
+    recomb_nodes = []
+    if len(nodes) == 0:
+        nodes = range(len(ts.nodes()))
+        print(nodes)
+    for i in nodes:
+        is_parent = ts.tables.edges[np.where(ts.tables.edges.parent==i)[0]]
+        is_child = ts.tables.edges[np.where(ts.tables.edges.child==i)[0]]
+        if (len(set(is_parent.child)) == 1) & (len(set(is_child.parent)) > 1) & ((len(is_parent) + len(is_child)) % 2 != 0):
+            recomb_nodes.append(i)
+        elif (len(set(is_parent.child)) == 0) & (len(set(is_child.parent)) > 1):
+            recomb_nodes.append(i)
+    return recomb_nodes
+
+def identify_gmrca(ts):
+    all_tree_common_ancestors = []
+    for tree in ts.trees():
+        common_ancestor = []
+        for node in tree.nodes():
+            if tree.num_samples(node) == ts.num_samples:
+                common_ancestor.append(node)
+        if len(common_ancestor) > 0:
+            all_tree_common_ancestors.append(min(common_ancestor))
+        else:
+            all_tree_common_ancestors.append(ts.node(ts.num_nodes-1).id)
+    gmrca = max(all_tree_common_ancestors)
+    return gmrca
+
+def cut_ts_at_gmrca(ts, gmrca):
+    tables = tskit.TableCollection(sequence_length=subset_ts.sequence_length)
+    tables.nodes.metadata_schema = tskit.MetadataSchema.permissive_json()
+    node_table = tables.nodes
+    for i, node in enumerate(ts.tables.nodes):
+        if i <= gmrca:
+            node_table.add_row(
+                flags=node.flags,
+                time=node.time,
+                metadata=node.metadata
+            )
+    edge_table = tables.edges
+    for i, edge in enumerate(ts.tables.edges):
+        if (edge.parent <= gmrca) and (edge.child <= gmrca):
+            edge_table.add_row(
+                left=edge.left,
+                right=edge.right,
+                parent=edge.parent,
+                child=edge.child
+            )
+    tables.sort()
+    condensed_ts = tables.tree_sequence()
+    return condensed_ts
+
+
+
+
+
+ts = tskit.load("run1/slim_0.25rep4sigma.trees")
+np.random.seed(1)
+keep_nodes = list(np.random.choice(ts.samples(), 50, replace=False))
+subset_ts = ts.simplify(samples=keep_nodes, keep_input_roots=True, keep_unary=True)
+nx_arg = ts_to_nx(ts=subset_ts, fully_connected=True)
+critical_nodes = identify_critical_nodes(ts=subset_ts)
 simple_arg = simplify_graph(G=nx_arg, keep=critical_nodes)
 
-recomb_nodes = []
-for i in simple_arg.nodes:
-    is_parent = subset_ts.tables.edges[np.where(subset_ts.tables.edges.parent==i)[0]]
-    is_child = subset_ts.tables.edges[np.where(subset_ts.tables.edges.child==i)[0]]
-    if (len(set(is_parent.child)) == 1) & (len(set(is_child.parent)) > 1) & ((len(is_parent) + len(is_child)) % 2 != 0):
-        recomb_nodes.append(i)
+recomb_nodes = identify_recombination_nodes(ts=subset_ts, nodes=simple_arg.nodes)
         
 tables = tskit.TableCollection(sequence_length=subset_ts.sequence_length)
 tables.nodes.metadata_schema = tskit.MetadataSchema.permissive_json()
@@ -128,27 +184,6 @@ for node in sorted(simple_arg.nodes):
 
 node_lookup = pd.DataFrame({"subset_ts_id":subset_ts_id, "simple_id":simple_id})
 
-def check_range_overlap(start1, stop1, start2, stop2):
-    """Checks if two ranges overlap. Returns corresponding boolean"""
-    return (start1 <= start2 < stop1) or (start2 <= start1 < stop2)
-
-def mergeIntervals(intervals):
-    """Adapted from https://www.geeksforgeeks.org/merging-intervals/"""
-    # Sort the array on the basis of start values of intervals.
-    intervals.sort()
-    stack = []
-    # insert first interval into stack
-    stack.append(intervals[0])
-    for i in intervals[1:]:
-        # Check for overlapping interval,
-        # if interval overlap
-        if stack[-1][0] <= i[0] <= stack[-1][-1]:
-            stack[-1][-1] = max(stack[-1][-1], i[-1])
-        else:
-            stack.append(i)
-    return stack
-
-
 children = []
 parents = []
 left = []
@@ -179,7 +214,10 @@ simple_edges = pd.DataFrame({"parent":parents, "child":children, "left":left, "r
 for recomb in simple_recomb_nodes:
     is_parent = simple_edges.loc[simple_edges["parent"]==recomb]
     is_child = simple_edges.loc[simple_edges["child"]==recomb]
-    if len(is_child) > 2:
+    if len(is_parent) == 0:
+        print("SAMPLE", recomb, "IS ALSO A RECOMBINATION NODE - CAUTION")
+        simple_edges.at[is_child.index.values[1],"child"] = recomb + 1
+    elif len(is_child) > 2:
         associated_edges = defaultdict(list)
         for pi, parent_edge in is_parent.iterrows():
             for ci, child_edge in is_child.iterrows():
@@ -227,43 +265,8 @@ for index, edge in simple_edges.iterrows():
 tables.sort()
 final_ts = tables.tree_sequence()
 
-print(final_ts.tables.edges[np.where(final_ts.tables.edges.parent==89)[0]])
-print(final_ts.tables.edges[np.where(final_ts.tables.edges.child==89)[0]])
-
-all_tree_common_ancestors = []
-for tree in final_ts.trees():
-    common_ancestor = []
-    for node in tree.nodes():
-        if tree.num_samples(node) == final_ts.num_samples:
-            common_ancestor.append(node)
-    if len(common_ancestor) > 0:
-        all_tree_common_ancestors.append(min(common_ancestor))
-    else:
-        #print(tree.draw_text())
-        all_tree_common_ancestors.append(final_ts.node(final_ts.num_nodes-1).id)
-gmrca = max(all_tree_common_ancestors)
-
-tables = tskit.TableCollection(sequence_length=subset_ts.sequence_length)
-tables.nodes.metadata_schema = tskit.MetadataSchema.permissive_json()
-node_table = tables.nodes
-for i, node in enumerate(final_ts.tables.nodes):
-    if i <= gmrca:
-        node_table.add_row(
-            flags=node.flags,
-            time=node.time,
-            metadata=node.metadata
-        )
-edge_table = tables.edges
-for i, edge in enumerate(final_ts.tables.edges):
-    if (edge.parent <= gmrca) and (edge.child <= gmrca):
-        edge_table.add_row(
-            left=edge.left,
-            right=edge.right,
-            parent=edge.parent,
-            child=edge.child
-        )
-tables.sort()
-condensed_ts = tables.tree_sequence()
+gmrca = identify_gmrca(ts=final_ts)
+condensed_ts = cut_ts_at_gmrca(ts=final_ts, gmrca=gmrca)
 
 import sys
 sys.path.append("/Users/jameskitchens/Documents/GitHub/tskit_arg_visualizer/visualizer")
