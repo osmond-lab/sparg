@@ -3,46 +3,48 @@ import random
 import numpy as np
 from collections import defaultdict
 import time
-import paths_modified
 
 
 def calc_covariance_matrix(ts):
-    gmrca = ts.node(ts.num_nodes-1).id
-    recomb_nodes = np.where(ts.tables.nodes.flags == 131072)[0]
-    recomb_nodes_to_convert = dict(zip(recomb_nodes[1::2], recomb_nodes[::2]))
     edges = ts.tables.edges
-    CovMat = np.matrix([[0.0]])
+    CovMat = np.zeros(shape=(ts.num_samples, ts.num_samples))
     Indices = defaultdict(list)
-    Indices[gmrca] = [0]
-    edges = ts.tables.edges
+    for i, sample in enumerate(ts.samples()):
+        Indices[sample] = [i]
+    Paths = [[sample] for sample in ts.samples()]
     for node in ts.nodes():
-        if node.id in recomb_nodes_to_convert or node.flags == 1:
-            continue
-        print(node.id)
         path_ind = Indices[node.id]
+        parent_nodes = np.unique(edges.parent[np.where(edges.child == node.id)])
+        for i, parent in enumerate(parent_nodes):
+            for path in path_ind:
+                if i > 0:
+                    Paths.append(Paths[path][:])
+                    Paths[-1][-1] = parent
+                else:
+                    Paths[path].append(parent)
         npaths = len(path_ind)
-        child_nodes = np.unique(edges.child[np.where(edges.parent == node.id)])
-        for i, child in enumerate(child_nodes):
-            if child in recomb_nodes_to_convert:
-                child_nodes[i] = recomb_nodes_to_convert[child]
-        nchild = len(child_nodes)
-        if nchild == 1:
-            child = child_nodes[0]
-            edge_len = node.time - ts.node(child).time
+        nparent = len(parent_nodes)
+        if nparent == 0:
+            continue
+        elif nparent == 1:
+            parent = parent_nodes[0]
+            edge_len = ts.node(parent).time - node.time
             CovMat[ np.ix_( path_ind, path_ind ) ] += edge_len*np.ones((npaths,npaths))
-            Indices[child] += path_ind
+            Indices[parent] += path_ind
         else:
-            edge_lens = [ node.time - ts.node(child).time for child in child_nodes ]
-            existing_paths = CovMat.shape[0]
-            CovMat = np.hstack(  (CovMat,) + tuple( ( CovMat[:,path_ind] for j in range(nchild-1) ) ) ) #Duplicate the rows
-            CovMat = np.vstack(  (CovMat,) + tuple( ( CovMat[path_ind,:] for j in range(nchild-1) ) ) ) #Duplicate the columns
-            CovMat[ np.ix_( path_ind, path_ind ) ] += edge_lens[0]*np.ones((npaths,npaths))
-            Indices[ child_nodes[0] ] += path_ind
-            for child_ind in range(1,nchild):
-                mod_ind = range(existing_paths+ npaths*(child_ind-1),existing_paths + npaths*child_ind) #indices of the entries that will be modified
-                CovMat[ np.ix_( mod_ind , mod_ind  ) ] += edge_lens[child_ind]*np.ones( (npaths,npaths) )
-                Indices[ child_nodes[child_ind] ] += mod_ind
-    return CovMat
+            edge_len = ts.node(parent_nodes[0]).time - node.time
+            CovMat = np.hstack(  (CovMat,) + tuple( ( CovMat[:,path_ind] for j in range(nparent-1) ) ) ) #Duplicate the rows
+            CovMat = np.vstack(  (CovMat,) + tuple( ( CovMat[path_ind,:] for j in range(nparent-1) ) ) ) #Duplicate the columns
+            new_ind = path_ind + list(range((-(nparent-1)*len(path_ind)),0))
+            CovMat[ np.ix_( new_ind, new_ind ) ] += edge_len
+            for i, parent in enumerate(parent_nodes):
+                for x in range(i*npaths,(i+1)*npaths):
+                    ind = new_ind[x]
+                    if ind < 0:
+                        ind = len(CovMat) + ind
+                    Indices[parent] += [ind]
+    return CovMat, Paths
+
 
 def benchmark(ts):
     start = time.time()
@@ -52,31 +54,22 @@ def benchmark(ts):
 
 if __name__ == "__main__":
     
-    #for i in range(1000):
     rs = random.randint(0,10000)
-    print(rs)
+    print("Random Seed:", rs)
+
     ts = msprime.sim_ancestry(
         samples=2,
         recombination_rate=1e-8,
         sequence_length=2_000,
         population_size=10_000,
         record_full_arg=True,
-        random_seed=9203
+        random_seed=rs
     )
-    #print(ts.draw_text())
+
+    print(ts.draw_text())
     
-    #print(cov_mat.sum())
-    #np.savetxt("topdown.csv", cov_mat, delimiter=",")
+    cov_mat, paths = calc_covariance_matrix(ts=ts)
 
-    #print(benchmark(ts=ts))
+    print(paths, cov_mat)
 
-    cov_mat = calc_covariance_matrix(ts=ts)
-    #print(cov_mat.sum(), cov_mat.shape[0])
-    #true_cov_mat, paths = paths_modified.calc_covariance_matrix(ts=ts)
-    #print(true_cov_mat.sum(), true_cov_mat.shape[0])
-    #print(paths)
-    #exit()
-    #np.savetxt("paths_modified.csv", true_cov_mat, delimiter=",")
-    #if round(cov_mat.sum()) != round(true_cov_mat.sum()):
-    #    print(rs, "FAIL", cov_mat.sum(), true_cov_mat.sum())
         
