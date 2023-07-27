@@ -8,8 +8,8 @@ Created on Thu Apr  6 23:19:09 2023
 
 import numpy as np 
 import sys
-sys.path.append('../benchmarking/algos/')
-import top_down
+# sys.path.append('../benchmarking/algos/')
+import SpARG
 import tskit
 import matplotlib.pyplot as plt 
 import msprime
@@ -121,35 +121,6 @@ def ts_singlecompound_3sam(x=0.25, y=0.125, z=0.25, t=1 ):
     ts_singlecompound_3sam.sort()
     return ts_singlecompound_3sam.tree_sequence()
 
-def MLE(S_inv, loc, n) :  
-    S_inv = np.array(S_inv)
-    # print(loc)
-    lenloc = len(loc)
-    one_vect = np.ones((lenloc,1)) 
-    # print(np.matmul(np.matmul(np.transpose(one_vect), S_inv),loc), np.matmul(np.matmul(np.transpose(one_vect), S_inv),one_vect) ) 
-    mu = np.matmul(np.matmul(np.transpose(one_vect), S_inv),loc) / np.matmul(np.matmul(np.transpose(one_vect), S_inv),one_vect)
-    # print(mu)
-    sigma = np.matmul(np.matmul(np.transpose(loc - mu*one_vect), S_inv), (loc - mu*one_vect))/n
-    return mu, sigma
-
-
-def ARG_estimate(ts): 
-    CM, indices, rootind = top_down.calc_covariance_matrix(ts)  
-    # print(CM)
-    # S = [ i for i,row in enumerate(ts.tables.nodes) if row.flags == 1 ] 
-    S = list(ts.samples())
-    # print(S, indices)
-    loc = np.zeros((CM.shape[0],1))
-    for i in S: 
-        # print(i)
-        for j in indices[i]:
-            ind = ts.tables.nodes[i].individual
-            # print(ind)
-            loc[j][0] = ts.tables.individuals[ind].location[0]
-    CMinv = np.linalg.pinv(CM)
-    print(CM, loc)
-    mu, sigma = MLE(CMinv, loc, len(S))
-    return mu, sigma
 
 def Tree_estimates(ts): 
     # S = [ i for i,row in enumerate(ts.tables.nodes) if row.flags == 1 ] 
@@ -160,17 +131,11 @@ def Tree_estimates(ts):
     mu_list = [] 
     sigma_list = []
     for i in range(n_breakpoints -1):  
+        print(i)
         tree = ts.keep_intervals( np.array([[breakpoints[i],breakpoints[i+1]]]), simplify=False ) 
         tree = tree.rtrim()
-        # print(tree.tables.edges)
-        CM, indices, rootind = top_down.calc_covariance_matrix(tree)  
-        loc = np.zeros((CM.shape[0],1))
-        for i in S: 
-            for j in indices[i]:
-                ind = ts.tables.nodes[i].individual
-                loc[j][0] = ts.tables.individuals[ind].location[0]
-        CMinv = np.linalg.pinv(CM)
-        mu, sigma = MLE(CMinv, loc, len(S))
+        
+        mu, sigma = SpARG.ARG_estimate(ts=tree)
         mu_list += [ mu[0][0] ]
         sigma_list += [sigma[0][0]]
         
@@ -759,10 +724,9 @@ if __name__ == "__main__":
     # print(len(list(ts_stack.trees())))
     
     for i in rng: 
-        # print(i)
-        ts = ts_stack.keep_intervals(np.array([[0,breakpoints[i]]]), simplify=False)
+        ts = ts_stack.keep_intervals(np.array([[0,breakpoints[i]]]),simplify=False)
         ts = ts.rtrim()
-        mu, sigma = ARG_estimate(ts)
+        mu, sigma = SpARG.ARG_estimate(ts)
         sigma_list += [sigma[0][0]]
     fig, ax = plt.subplots() 
     
@@ -774,9 +738,9 @@ if __name__ == "__main__":
        
     ax2 = ax.twinx()
     
-    lns3 = ax2.plot( rng, [ tree.roots[0] for tree in ts_stack.trees() ], color = 'red', label = 'Marginal Tree Height')
+    lns3 = ax2.plot(rng, [ tree.roots[0] for tree in ts_stack.trees() ], color = 'red', label = 'Marginal Tree Height')
     lns1 = ax.plot(rng, sigma_tree, linestyle = 'dashed', label = 'Marginal Tree Estimate', color = 'blue')
-    lns2 = ax.plot( rng,sigma_list, label = 'ARG Estimate (Partial Sequences)', color = 'blue' )
+    lns2 = ax.plot(rng, sigma_list, label = 'ARG Estimate (Partial Sequences)', color = 'blue' )
     
     
     ax2.set_ylabel('time of tree')

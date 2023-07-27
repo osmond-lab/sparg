@@ -145,6 +145,7 @@ def MLE(S_inv, loc, rootind, n) :
 
 def ARG_estimate(ts): 
     CM, indices, rootind = calc_covariance_matrix(ts)  
+    print(CM)
     S = list(ts.samples())
     loc = np.zeros((CM.shape[0],1))
     for i in S: 

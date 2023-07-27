@@ -18,10 +18,14 @@ def calc_covariance_matrix(ts):
         for i, parent in enumerate(parent_nodes):
             for path in path_ind:
                 if i > 0:
+                    print(Paths[path], Paths)
                     Paths.append(Paths[path][:])
+                    print(Paths)
                     Paths[-1][-1] = parent
                 else:
+                    print('Pat',Paths)
                     Paths[path].append(parent)
+                    print(Paths)
         npaths = len(path_ind)
         nparent = len(parent_nodes)
         if nparent == 0:
@@ -35,7 +39,8 @@ def calc_covariance_matrix(ts):
             edge_len = ts.node(parent_nodes[0]).time - node.time
             CovMat = np.hstack(  (CovMat,) + tuple( ( CovMat[:,path_ind] for j in range(nparent-1) ) ) ) #Duplicate the rows
             CovMat = np.vstack(  (CovMat,) + tuple( ( CovMat[path_ind,:] for j in range(nparent-1) ) ) ) #Duplicate the columns
-            new_ind = path_ind + list(range((-(nparent-1)*len(path_ind)),0))
+            new_ind = path_ind + [len(CovMat) + x for x in range((-(nparent-1)*len(path_ind)),0)]
+            # new_ind = path_ind + list(range((-(nparent-1)*len(path_ind)),0))
             CovMat[ np.ix_( new_ind, new_ind ) ] += edge_len
             for i, parent in enumerate(parent_nodes):
                 for x in range(i*npaths,(i+1)*npaths):
@@ -63,7 +68,7 @@ if __name__ == "__main__":
         sequence_length=2_000,
         population_size=10_000,
         record_full_arg=True,
-        random_seed=rs
+        random_seed=1793
     )
 
     print(ts.draw_text())
@@ -71,5 +76,3 @@ if __name__ == "__main__":
     cov_mat, paths = calc_covariance_matrix(ts=ts)
 
     print(paths, cov_mat)
-
-        
