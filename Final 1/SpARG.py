@@ -90,7 +90,7 @@ def calc_covariance_matrix(ts, internal_nodes = 'None' ):
                     int_nodes_update += internal_indices[i]
                 shared_time[ np.ix_( int_nodes_update, new_ind) ] += edge_len
 
-    return CovMat, Paths, shared_time
+    return CovMat, Paths, [list(int_nodes.keys()),shared_time]
 
 
 def MLE(S_inv, loc, path_roots, n) :  
@@ -175,6 +175,8 @@ def ARG_estimate(ts):
     CMinv = np.linalg.pinv(CM)
     mu, sigma = MLE(CMinv, loc, roots, len(np.unique(samples)))
     return mu, sigma
+
+
     
 if __name__ == "__main__":
     
