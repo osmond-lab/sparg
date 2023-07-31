@@ -43,6 +43,7 @@ def calc_covariance_matrix(ts, internal_nodes = 'None' ):
     Paths = [[sample] for sample in ts.samples()] #Keeps track of different paths. To begin with, as many paths as samples.
     
     #Shared Time of Internal Nodes 
+    int_nodes = {}
     if internal_nodes != 'None':
         if internal_nodes =='All': 
             int_nodes = {nd.id:i for i,nd in enumerate(ts.nodes()) }    

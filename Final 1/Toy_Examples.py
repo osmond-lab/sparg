@@ -695,17 +695,17 @@ if __name__ == "__main__":
     # fig.suptitle('Single Compound Loop', fontsize = 17)
     
     """ Stacked Loops """ 
-    ts_stack = ts_stacked(x=10,n = 10)
-    ts_stack = ts_stack.rtrim() 
+    # ts_stack = ts_stacked(x=10,n = 10)
+    # ts_stack = ts_stack.rtrim() 
     
-    # ts_stack = msprime.sim_ancestry(
-    #     samples=10,
-    #     recombination_rate=1e-7,
-    #     sequence_length=2_000,
-    #     population_size=10_000,
-    #     record_full_arg=True,
-    #     # random_seed=9203
-    # )
+    ts_stack = msprime.sim_ancestry(
+        samples=10,
+        recombination_rate=1e-7,
+        sequence_length=2_000,
+        population_size=10_000,
+        record_full_arg=True,
+        # random_seed=9203
+    )
     
     tstables = ts_stack.dump_tables()
     loc_list = [] 
