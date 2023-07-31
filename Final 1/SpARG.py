@@ -186,11 +186,21 @@ def ARG_estimate(ts, internal_nodes = 'All', return_roots = False):
     mu_roots, sigma, roots, R  = MLE(CMinv, loc, path_roots, len(np.unique(samples)))
     
     internal_path_roots = [ internal_path[-1] for internal_path in internal_data[-1]  ]
-    internal_path_root_locations = [ mu_roots[np.where(roots == rt)[0]] for rt in internal_path_roots ]
+    # print(mu_roots, [rt for rt in internal_path_roots])
+    internal_path_root_locations = [ mu_roots[np.where(roots == rt)[0]][0] for rt in internal_path_roots ]
     internal_path_root_locations = np.array(internal_path_root_locations)
     internal_locations = internal_path_root_locations + np.matmul(np.matmul(internal_data[1], CMinv),loc - np.matmul(np.transpose(R),mu_roots))
                             
-    return mu_roots, sigma, internal_locations 
+    internal_loc_variance = [] 
+    for i,nd in enumerate(internal_data[0]) : 
+        t_int = ts.tables.nodes.time[nd]
+        s_int = np.array([internal_data[1][i]])
+        print(s_int.shape)
+        var_int = t_int - np.matmul(np.matmul(s_int,CMinv),np.transpose(s_int)) 
+        # + (1 - np.sum(np.matmul(s_int,CMinv) ) )**2/(np.sum(CMinv))
+        internal_loc_variance += [sigma*var_int]
+        
+    return mu_roots, sigma, internal_locations, internal_loc_variance
 
     
     
@@ -223,6 +233,6 @@ if __name__ == "__main__":
     tstables.sort()
     ts_loc = tstables.tree_sequence()
     
-    mu_roots, sigma, internal_locations  = ARG_estimate(ts=ts_loc, internal_nodes = [5,8] )
+    mu_roots, sigma, internal_locations, internal_var  = ARG_estimate(ts=ts_loc, internal_nodes = [5,8] )
     
     
