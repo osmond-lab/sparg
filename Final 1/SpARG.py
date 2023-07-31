@@ -188,7 +188,7 @@ def ARG_estimate(ts, internal_nodes = 'All', return_roots = False):
     internal_path_roots = [ internal_path[-1] for internal_path in internal_data[-1]  ]
     internal_path_root_locations = [ mu_roots[np.where(roots == rt)[0]] for rt in internal_path_roots ]
     internal_path_root_locations = np.array(internal_path_root_locations)
-    internal_locations = np.matmul(np.matmul(internal_data[1], CMinv),loc - np.matmul(np.transpose(R),mu_roots))
+    internal_locations = internal_path_root_locations + np.matmul(np.matmul(internal_data[1], CMinv),loc - np.matmul(np.transpose(R),mu_roots))
                             
     return mu_roots, sigma, internal_locations 
 
