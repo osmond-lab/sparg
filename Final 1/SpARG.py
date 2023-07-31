@@ -47,8 +47,10 @@ def calc_covariance_matrix(ts, internal_nodes = 'None' ):
     if internal_nodes != 'None':
         if internal_nodes =='All': 
             int_nodes = {nd.id:i for i,nd in enumerate(ts.nodes()) }    
+            internal_paths = [ [nd.id] for nd in ts.nodes() ]
         else:
             int_nodes = {nd:i for i,nd in enumerate(internal_nodes) }    
+            internal_paths = [ [nd] for nd in internal_nodes ]
         shared_time = np.zeros(shape=(len(int_nodes),ts.num_samples)) 
         internal_indices = defaultdict(list) #For each path, identifies internal nodes that are using that path for shared times.
     
@@ -56,16 +58,23 @@ def calc_covariance_matrix(ts, internal_nodes = 'None' ):
     for node in ts.nodes():
         path_ind = Indices[node.id]
         parent_nodes = np.unique(edges.parent[np.where(edges.child == node.id)])
+        
+        if internal_nodes != 'None': 
+            if node.id in int_nodes: 
+                internal_indices[path_ind[0]] += [int_nodes[node.id]]
+                
         for i, parent in enumerate(parent_nodes):
             for path in path_ind:
                 if i == 0:
                     Paths[path].append(parent)
+                    for internal_path_ind in internal_indices[path]: 
+                        internal_paths[internal_path_ind] += [parent]
                 else:
                     Paths.append(Paths[path][:])
                     Paths[-1][-1] = parent
-        if internal_nodes != 'None': 
-            if node.id in int_nodes: 
-                internal_indices[path_ind[0]] += [int_nodes[node.id]]
+                
+                    
+        
                     
         npaths = len(path_ind)
         nparent = len(parent_nodes)
@@ -91,7 +100,7 @@ def calc_covariance_matrix(ts, internal_nodes = 'None' ):
                     int_nodes_update += internal_indices[i]
                 shared_time[ np.ix_( int_nodes_update, new_ind) ] += edge_len
 
-    return CovMat, Paths, [list(int_nodes.keys()),shared_time]
+    return CovMat, Paths, [list(int_nodes.keys()),shared_time, internal_paths]
 
 
 def MLE(S_inv, loc, path_roots, n) :  
@@ -144,7 +153,7 @@ def MLE(S_inv, loc, path_roots, n) :
             mu_list = np.array(rre_form.col(-1))
             mu_vect = np.matmul(np.transpose(R),mu_list)    
             sigma = np.matmul(np.matmul(np.transpose(loc - mu_vect), S_inv), (loc - mu_vect))/n
-            return mu_list, sigma
+            return mu_list, sigma, roots, R
     else: 
         print("Multiple Solution")
         mu_particular = rre_form.col(-1)
@@ -162,11 +171,11 @@ def MLE(S_inv, loc, path_roots, n) :
         #         a = np.random.uniform(-50,50)
         #         mu_list += a*col
         # print( np.average(sigma_list))
-        return mu_particular, sigma
+        return mu_particular, sigma, roots, R
 
-def ARG_estimate(ts): 
-    CM, paths, shared_times = calc_covariance_matrix(ts)  
-    roots = [ row[-1] for row in paths ]
+def ARG_estimate(ts, internal_nodes = 'All', return_roots = False): 
+    CM, paths, internal_data = calc_covariance_matrix(ts, internal_nodes = internal_nodes)  
+    path_roots = [ row[-1] for row in paths ]
     samples = [ row[0] for row in paths ] 
     loc = np.zeros((CM.shape[0],1))
     for i,nd in enumerate(samples): 
@@ -174,17 +183,21 @@ def ARG_estimate(ts):
         loc[i][0] = ts.tables.individuals[ind].location[0]
     # print(CM,loc)
     CMinv = np.linalg.pinv(CM)
-    mu, sigma = MLE(CMinv, loc, roots, len(np.unique(samples)))
-    return mu, sigma
+    mu_roots, sigma, roots, R  = MLE(CMinv, loc, path_roots, len(np.unique(samples)))
+    
+    internal_path_roots = [ internal_path[-1] for internal_path in internal_data[-1]  ]
+    internal_path_root_locations = [ mu_roots[np.where(roots == rt)[0]] for rt in internal_path_roots ]
+    internal_path_root_locations = np.array(internal_path_root_locations)
+    internal_locations = np.matmul(np.matmul(internal_data[1], CMinv),loc - np.matmul(np.transpose(R),mu_roots))
+                            
+    return mu_roots, sigma, internal_locations 
 
-
+    
+    
     
 if __name__ == "__main__":
     
-    rs = random.randint(0,
-    
-
-10000)
+    rs = random.randint(0, 10000)
     print("Random Seed:", rs)
 
     ts = msprime.sim_ancestry(
@@ -195,10 +208,21 @@ if __name__ == "__main__":
         record_full_arg=True,
         random_seed=rs
     )
-
+    
+    
     print(ts.draw_text())
     
-    cov_mat, paths, shared_time = calc_covariance_matrix(ts=ts, internal_nodes=[5,8])
+    cov_mat, paths, internal_data = calc_covariance_matrix(ts=ts, internal_nodes=[5,8])
 
-    # print(paths, cov_mat, shared_time)
+    tstables = ts.dump_tables()
+    loc_list = [] 
+    for ind in tstables.individuals : 
+        loc_list += [ [ np.random.uniform(-100,100) ] ]
+    
+    tstables.individuals.packset_location(np.array( loc_list ))
+    tstables.sort()
+    ts_loc = tstables.tree_sequence()
+    
+    mu_roots, sigma, internal_locations  = ARG_estimate(ts=ts_loc, internal_nodes = [5,8] )
+    
     
