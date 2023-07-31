@@ -8,28 +8,33 @@ Created on Wed Apr 12 09:25:29 2023
 
 import msprime
 import tskit 
-import top_down
+import ts_to_ARG
+import SpARG 
 import numpy as np 
 import pyslim
 import matplotlib.pyplot as plt
 
 if __name__ == "__main__":    
     
-    
     ts = tskit.load('/home/puneeth/UofT/SpARG Project/SLiM/trial.trees')
     data = []
-    for sigma in np.arange(0.75,0.76,0.25):
+    
+    fig_dispersal, ax_dispersal = plt.subplots() 
+    fig_intloc, ax_intloc = plt.subplots() 
+    
+    intloc_average_absdiff = [] 
+    intloc_average_cov = [] 
+    sigma_rng = np.arange(0.25,0.76,0.25)
+    for sigma in sigma_rng:
         sigmas_true = []
         sigmas_ARG = []
+        intloc_absdiff = []
+        intloc_cov = []
         for rep in range(1,11):
-            print(sigma, rep)
-            
-            
-            
+            print(sigma, rep)            
             fname = 'slim_'+str(round(sigma,2))+'rep'+str(rep)+'sigma.trees'
-            
             ts = tskit.load(fname)
-            keep_nodes = list(np.random.choice(ts.samples(), 30, replace=False))
+            keep_nodes = list(np.random.choice(ts.samples(), 4, replace=False))
             
             # ts = pyslim.generate_nucleotides(ts) #generate random nucleotides for slim mutations, https://github.com/tskit-dev/pyslim/pull/174
             # ts = pyslim.convert_alleles(ts) #convert slim alleles (0,1) to nucleotides
@@ -37,60 +42,48 @@ if __name__ == "__main__":
             # sts = ts_mut.simplify(samples=keep_nodes, keep_input_roots=True, keep_unary=False)
             # sts.write_fasta(fname+".fa")
     
-            ts = ts.decapitate(time=500)
-            # ts_sim = ts
+            ts = ts.decapitate(time=3000)
             ts_sim = ts.simplify(samples=keep_nodes, keep_input_roots=False, keep_unary=True)
-            # print(len(list(ts.edges())), n(list(ts.samples())), len(list( ts.nodes() )))
-            # print(len(list(ts.edges())), len(list(ts.samples())), len(list( ts.nodes() )))
             
-            ts_tables = ts_sim.dump_tables()
             
-            node_table = ts_tables.nodes
-            flags = node_table.flags
-            
-            recomb_nodes = []
-            coal_nodes = []
-            
-            for nd in ts_sim.nodes(): 
-                parents = np.unique(ts_tables.edges.parent[np.where(ts_tables.edges.child == nd.id)[0]])
-                children = np.unique(ts_tables.edges.child[np.where(ts_tables.edges.parent == nd.id)[0]])
-                # print(nd, parent_ids)
-                if len(parents) == 2: 
-                    # parents = ts_tables.edges.parent[parent_ids[0]]
-                    # print(nd.id, parents)
-                    recomb_nodes += list(parents)
-                    flags[parents] = [131072,131072]
-                    for nd_parent in parents : 
-                        if ts_tables.nodes.time[nd_parent] == ts_sim.max_root_time:
-                            print('Multipe Roots', nd_parent)
-                    # print(flags)
-                if len(children) == 2 : 
-                    coal_nodes += [nd.id]
-                if len(parents) > 2:
-                    raise TypeError('Error',nd.id)
-                if len(children) > 2:
-                    print('Multiple Children', nd.id)
-                # if len(set(recomb_nodes).intersection(set(coal_nodes))) > 0 :
-                #     raise TypeError('Recombination and Coalescent Node', set(recomb_nodes).intersection(set(coal_nodes)))
-            node_table.flags = flags
-            ts_tables.sort() 
-            ts_new = ts_tables.tree_sequence()
-            
-            keep_nodes = list(ts_new.samples()) + list(np.unique(list(np.unique(recomb_nodes))  + list(np.unique(coal_nodes))))
-            ts_final, maps = ts_new.simplify(samples=keep_nodes, map_nodes = True, keep_input_roots=False, keep_unary=False, update_sample_flags = False)
-            
+            ts_final, maps =  ts_to_ARG.ts_to_ARG(ts_sim) 
+            ts_final = ts_to_ARG.merge_roots(ts_final)
             
             print('Done')
             # print(len(list(ts.edges())), len(list(ts.samples())), len(list( ts.nodes() )))
-            mu, sigma_ARG = top_down.ARG_estimate(ts_final)
+            internal_nodes = np.unique(ts_final.tables.edges.parent)
+            mu, sigma_ARG, internal_locations = SpARG.ARG_estimate(ts_final, internal_nodes = list(internal_nodes) )
             print(sigma_ARG)
-            if sigma_ARG < 10 : 
-                sigmas_ARG += [sigma_ARG]
-                sigmas_true += [sigma]
+            sigmas_ARG += [sigma_ARG]
+            sigmas_true += [sigma]
             data += [ [ sigma,sigma_ARG ] ]
-        plt.scatter(sigmas_true, sigmas_ARG)
             
+            """Comparing Internal Locations """
+            true_locs = [ts.tables.individuals[ ts.tables.nodes[nd].indvidual ].location[0] for nd in internal_nodes  ]
             
-    plt.plot([0,1.25],[0,1.25],color='black')
+            #Average absolute difference between true and estimated locations 
+            abs_diff = 0 
+            for i in range(len(internal_nodes)): 
+                abs_diff += np.abs( internal_locations[i] - true_locs[i] ) 
+            abs_diff = abs_diff/float(len(internal_nodes))
+            intloc_absdiff += [abs_diff]
             
+            #Covariance between true and inferred values 
+            true_mean = np.mean(true_locs)
+            estimated_mean = np.mean(internal_locations)
+            cov = sum((x - true_mean)*(y - estimated_mean) for x, y in zip(true_locs, internal_locations)) / len(true_locs)
+            intloc_cov += [cov]
+            
+        ax_dispersal.scatter(sigmas_true, sigmas_ARG)
+        ax_intloc.scatter(sigmas_true, intloc_absdiff, color = 'blue')
+        ax_intloc.scatter(sigmas_true, intloc_cov, color = 'red')
+            
+        intloc_average_absdiff += [np.mean(intloc_absdiff) ]
+        intloc_average_cov += [np.mean(intloc_cov) ]
+        
+    ax_dispersal.plot([0,1.25],[0,1.25],color='black')
+    
+    ax_intloc.plot(sigma_rng, intloc_average_absdiff, color = 'blue', label = 'Internal Locationn - Abs Diff')
+    ax_intloc.plot(sigma_rng, intloc_average_cov, color = 'red', label = 'Internal Locationn - Covariance')
+    
     
