@@ -203,20 +203,6 @@ def locate_roots(inverted_cov_mat, roots_array, locations_of_path_starts):
             warnings.warn("Multiple solutions to system of linear equations in root location calculation.")
         return np.array(rre_form.col(range(-locations_of_path_starts.shape[1],0)))
 
-"""
-def calc_node_locations():
-    node_path_roots = [path[-1] for path in node_paths]
-    node_path_root_locations = np.array([root_locations[np.where(roots == rt)[0]][0] for rt in node_path_roots])
-    node_locations = node_path_root_locations + np.matmul(np.matmul(node_shared_times, inverted_cov_mat), locations_of_path_starts - root_locations_vector)
-    locations_of_nodes = {}
-    for i,node in enumerate(range(ts.num_nodes)):
-        locations_of_nodes[node] = node_locations[i]
-    node_location_variance = {}
-    for node in ts.nodes():
-        nodes_shared_times_with_sample_paths = np.array([node_shared_times[node.id]])
-        node_location_variance[node.id] = node.time - np.matmul(np.matmul(nodes_shared_times_with_sample_paths, inverted_cov_mat), np.transpose(nodes_shared_times_with_sample_paths))
-    return locations_no
-"""
 
 def estimate_spatial_parameters(ts, locations_of_individuals={}):
     """Calculates maximum likelihood dispersal rate and the locations of ancestral nodes.
