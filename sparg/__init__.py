@@ -257,19 +257,9 @@ def estimate_spatial_parameters(ts, locations_of_individuals={}):
     locations_of_nodes = {}
     for node in ts.nodes():
         locations_of_nodes[node.id] = node_locations[node.id].tolist()
-
-                
     output = np.matmul(np.matmul(node_shared_times, inverted_cov_mat), np.transpose(node_shared_times))
     variances_in_node_locations = {}
     for node in ts.nodes():
         variances_in_node_locations[node.id] = round((ts.max_root_time-node.time)-output[node.id, node.id].tolist())    # rounding to get rid of slight negative with samples
-
-
-    #node_location_variance = {}
-    #for node in ts.nodes():
-    #    nodes_shared_times_with_sample_paths = np.array([node_shared_times[node.id]])
-    #    node_location_variance[node.id] = node.time - np.matmul(np.matmul(nodes_shared_times_with_sample_paths, inverted_cov_mat), np.transpose(nodes_shared_times_with_sample_paths))
-
-    #print(node_location_variance)
-
+    
     return sigma, locations_of_nodes, variances_in_node_locations, cov_mat, paths
