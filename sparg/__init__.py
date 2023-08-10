@@ -249,10 +249,15 @@ def estimate_spatial_parameters(ts, locations_of_individuals={}, return_ancestra
         locations_of_nodes = {}
         for node in ts.nodes():
             locations_of_nodes[node.id] = node_locations[node.id].tolist()
-        output = np.matmul(np.matmul(node_shared_times, inverted_cov_mat), np.transpose(node_shared_times))
+        explained_variance = np.matmul(np.matmul(node_shared_times, inverted_cov_mat), np.transpose(node_shared_times))
         variances_in_node_locations = {}
         for node in ts.nodes():
-            variances_in_node_locations[node.id] = round((ts.max_root_time-node.time)-output[node.id, node.id].tolist())    # rounding to get rid of slight negative with samples
+            node_specific_sharing = node_shared_times[node.id,:]
+            ones = np.ones(inverted_cov_mat.shape[0])
+            unexplained_numerator = (1-np.matmul(np.matmul(np.transpose(node_specific_sharing),inverted_cov_mat),ones))**2
+            unexplained_denominator = np.matmul(np.matmul(np.transpose(ones),inverted_cov_mat),ones)
+            variance_scaling_factor = (ts.max_root_time-node.time)-explained_variance[node.id, node.id]+(unexplained_numerator/unexplained_denominator)
+            variances_in_node_locations[node.id] = (sigma*variance_scaling_factor).tolist()    # rounding to get rid of slight negative with samples
         return sigma, cov_mat, paths, locations_of_nodes, variances_in_node_locations
     
     return sigma, cov_mat, paths
