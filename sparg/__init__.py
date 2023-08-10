@@ -204,7 +204,7 @@ def locate_roots(inverted_cov_mat, roots_array, locations_of_path_starts):
         return np.array(rre_form.col(range(-locations_of_path_starts.shape[1],0)))
 
 
-def estimate_spatial_parameters(ts, locations_of_individuals={}):
+def estimate_spatial_parameters(ts, locations_of_individuals={}, return_ancestral_node_positions=True):
     """Calculates maximum likelihood dispersal rate and the locations of ancestral nodes.
 
     Parameters
@@ -216,7 +216,9 @@ def estimate_spatial_parameters(ts, locations_of_individuals={}):
         The locations of individuals can be provided within the tskit Tree Sequence or as a separate
         dictionary, where the key is the node ID and the value is a numpy.ndarray or list with the node's
         location.
-    internal_nodes (optional) : dictionary
+    return_ancestral_node_positions (optional) : boolean
+        Option to calculate the position of internal nodes. This can be a computationally costly calculation
+        so can be bypasses if the user is only interested in dispersal rates and the covariance matrix.
 
     Returns
     -------
@@ -226,7 +228,10 @@ def estimate_spatial_parameters(ts, locations_of_individuals={}):
 
     if locations_of_individuals == {}:  # if user doesn't provide a separate locations dictionary, builds one
         locations_of_individuals = get_tskit_locations(ts=ts)
-    cov_mat, paths, node_shared_times, node_paths = calc_covariance_matrix(ts=ts, internal_nodes=range(ts.num_nodes))
+    if return_ancestral_node_positions:
+        cov_mat, paths, node_shared_times, node_paths = calc_covariance_matrix(ts=ts, internal_nodes=range(ts.num_nodes))
+    else:
+        cov_mat, paths = calc_covariance_matrix(ts=ts)
     locations_of_path_starts, locations_of_samples = expand_locations(locations_of_individuals=locations_of_individuals, ts=ts, paths=paths)
     inverted_cov_mat = np.linalg.pinv(cov_mat)
     roots_array, roots = build_roots_array(paths) 
@@ -237,15 +242,17 @@ def estimate_spatial_parameters(ts, locations_of_individuals={}):
     sigma = np.matmul(np.matmul(np.transpose(locations_of_path_starts - root_locations_vector), inverted_cov_mat), (locations_of_path_starts - root_locations_vector))/ts.num_samples
     
     # calculate locations of nodes
-    node_path_roots = [path[-1] for path in node_paths]
-    node_path_root_locations = np.array([root_locations[np.where(roots == rt)[0]][0] for rt in node_path_roots])
-    node_locations = node_path_root_locations + np.matmul(np.matmul(node_shared_times, inverted_cov_mat), locations_of_path_starts - root_locations_vector)
-    locations_of_nodes = {}
-    for node in ts.nodes():
-        locations_of_nodes[node.id] = node_locations[node.id].tolist()
-    output = np.matmul(np.matmul(node_shared_times, inverted_cov_mat), np.transpose(node_shared_times))
-    variances_in_node_locations = {}
-    for node in ts.nodes():
-        variances_in_node_locations[node.id] = round((ts.max_root_time-node.time)-output[node.id, node.id].tolist())    # rounding to get rid of slight negative with samples
+    if return_ancestral_node_positions:
+        node_path_roots = [path[-1] for path in node_paths]
+        node_path_root_locations = np.array([root_locations[np.where(roots == rt)[0]][0] for rt in node_path_roots])
+        node_locations = node_path_root_locations + np.matmul(np.matmul(node_shared_times, inverted_cov_mat), locations_of_path_starts - root_locations_vector)
+        locations_of_nodes = {}
+        for node in ts.nodes():
+            locations_of_nodes[node.id] = node_locations[node.id].tolist()
+        output = np.matmul(np.matmul(node_shared_times, inverted_cov_mat), np.transpose(node_shared_times))
+        variances_in_node_locations = {}
+        for node in ts.nodes():
+            variances_in_node_locations[node.id] = round((ts.max_root_time-node.time)-output[node.id, node.id].tolist())    # rounding to get rid of slight negative with samples
+        return sigma, cov_mat, paths, locations_of_nodes, variances_in_node_locations
     
-    return sigma, locations_of_nodes, variances_in_node_locations, cov_mat, paths
+    return sigma, cov_mat, paths
