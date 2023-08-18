@@ -75,7 +75,7 @@ def identify_gmrca(ts):
 def cut_ts_at_gmrca(ts):
     gmrca = identify_gmrca(ts=ts)
     if gmrca != -1:
-        return ts.subset(nodes=list(range(gmrca)))
+        return ts.subset(nodes=list(range(gmrca+1)))
     else:
         warnings.warn("Tree sequence does not have a GMRCA - did not cut.")
         return ts
