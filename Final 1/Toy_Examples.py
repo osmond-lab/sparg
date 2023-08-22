@@ -131,7 +131,7 @@ def Tree_estimates(ts):
     mu_list = [] 
     sigma_list = []
     for i in range(n_breakpoints -1):  
-        print(i)
+        #print(i)
         tree = ts.keep_intervals( np.array([[breakpoints[i],breakpoints[i+1]]]), simplify=False ) 
         tree = tree.rtrim()
         
