@@ -105,7 +105,7 @@ def identify_gmrca(ts):
     return gmrca
 
 def cut_ts_at_gmrca(ts, gmrca):
-    tables = tskit.TableCollection(sequence_length=subset_ts.sequence_length)
+    tables = tskit.TableCollection(sequence_length=ts.sequence_length)
     tables.nodes.metadata_schema = tskit.MetadataSchema.permissive_json()
     node_table = tables.nodes
     for i, node in enumerate(ts.tables.nodes):
