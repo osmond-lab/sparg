@@ -12,6 +12,7 @@ def merge_roots(ts):
     parent = edge_table.parent 
     
     roots = np.where(ts_tables.nodes.time == ts.max_time)[0]
+    print(roots)
     root_children = []
     for root in roots:
         root_children += list(ts.tables.edges.child[np.where(ts.tables.edges.parent == root)[0]])
@@ -26,7 +27,7 @@ def merge_roots(ts):
     return ts_new 
                 
                 
-def remove_excess_nodes(ts):
+def remove_excess_nodes(ts, keep_young_nodes={}):
     ts_tables = ts.dump_tables()
     node_table = ts_tables.nodes
     flags = node_table.flags
@@ -47,10 +48,16 @@ def remove_excess_nodes(ts):
     ts_tables.sort() 
     ts_new = ts_tables.tree_sequence()
     
-    keep_nodes = list(np.unique( list(ts_new.samples()) + list(np.unique(recomb_nodes)) + list(np.unique(coal_nodes)) )) 
+    critical_nodes = list(np.unique( list(ts_new.samples()) + list(np.unique(recomb_nodes)) + list(np.unique(coal_nodes)) ))  
+    if len(keep_young_nodes) > 0:
+        keep_nodes = list(np.unique(critical_nodes + list(np.where((node_table.time<=keep_young_nodes["below"]) & (node_table.time%keep_young_nodes["step"]==0))[0])))
+    else:
+        keep_nodes = critical_nodes
     ts_final, maps = ts_new.simplify(samples=keep_nodes, map_nodes = True, keep_input_roots=False, keep_unary=False, update_sample_flags = False)
-    
-    return ts_final, maps
+    critical_nodes_mapped = []
+    for node in critical_nodes:
+        critical_nodes_mapped.append(maps[node])
+    return ts_final, maps, critical_nodes_mapped
 
 
 def identify_gmrca(ts):

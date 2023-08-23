@@ -204,7 +204,7 @@ def locate_roots(inverted_cov_mat, roots_array, locations_of_path_starts):
         return np.array(rre_form.col(range(-locations_of_path_starts.shape[1],0)))
     
 
-def estimate_spatial_parameters(ts, locations_of_individuals={}, return_ancestral_node_positions=True):
+def estimate_spatial_parameters(ts, locations_of_individuals={}, return_ancestral_node_positions=[]):
     """Calculates maximum likelihood dispersal rate and the locations of ancestral nodes.
 
     Parameters
@@ -229,12 +229,12 @@ def estimate_spatial_parameters(ts, locations_of_individuals={}, return_ancestra
     #viz.D3ARG(ts=ts).draw(width=1000, height=700, edge_type="line")
     #if len(tracked_samples) > 0:
     #    ts = add_nodes_along_sample_paths(ts=ts, tracked_samples=tracked_samples)
-        #viz.D3ARG(ts=ts).draw(width=1000, height=700, edge_type="line")
-
+        #viz.D3ARG(ts=ts).draw(width=1000, height=700, edge_type="line")    
     if locations_of_individuals == {}:  # if user doesn't provide a separate locations dictionary, builds one
         locations_of_individuals = get_tskit_locations(ts=ts)
-    if return_ancestral_node_positions:
-        cov_mat, paths, node_shared_times, node_paths = calc_covariance_matrix(ts=ts, internal_nodes=range(ts.num_nodes))
+    return_ancestral_node_positions = [x for x in return_ancestral_node_positions if x <= ts.node(ts.num_nodes-1).id]
+    if len(return_ancestral_node_positions)>0:
+        cov_mat, paths, node_shared_times, node_paths = calc_covariance_matrix(ts=ts, internal_nodes=return_ancestral_node_positions)
     else:
         cov_mat, paths = calc_covariance_matrix(ts=ts)
     locations_of_path_starts, locations_of_samples = expand_locations(locations_of_individuals=locations_of_individuals, ts=ts, paths=paths)
@@ -247,25 +247,25 @@ def estimate_spatial_parameters(ts, locations_of_individuals={}, return_ancestra
     sigma = np.matmul(np.matmul(np.transpose(locations_of_path_starts - root_locations_vector), inverted_cov_mat), (locations_of_path_starts - root_locations_vector))/(ts.num_samples-len(roots))
     
     # calculate locations of nodes
-    if return_ancestral_node_positions:
+    if len(return_ancestral_node_positions)>0:
         node_path_roots = [path[-1] for path in node_paths]
         node_path_root_locations = np.array([root_locations[np.where(roots == rt)[0]][0] for rt in node_path_roots])
         node_locations = node_path_root_locations + np.matmul(np.matmul(node_shared_times, inverted_cov_mat), locations_of_path_starts - root_locations_vector)
         locations_of_nodes = {}
-        for node in ts.nodes():
-            locations_of_nodes[node.id] = node_locations[node.id].tolist()
+        for i,node in enumerate(return_ancestral_node_positions):
+            locations_of_nodes[node] = node_locations[i].tolist()
         explained_variance = np.matmul(np.matmul(node_shared_times, inverted_cov_mat), np.transpose(node_shared_times))
         ones = np.ones(inverted_cov_mat.shape[0])
         #uncorrected_variances_in_node_locations = {}
         corrected_variances_in_node_locations = {}
-        for node in ts.nodes():
+        for i,node in enumerate(return_ancestral_node_positions):
             #uncorrected_variance_scaling_factor = (ts.max_root_time-node.time)-explained_variance[node.id, node.id]
-            node_specific_sharing = node_shared_times[node.id,:]
+            node_specific_sharing = node_shared_times[i,:]
             unexplained_numerator = (1-np.matmul(np.matmul(np.transpose(node_specific_sharing),inverted_cov_mat),ones))**2
             unexplained_denominator = np.matmul(np.matmul(np.transpose(ones),inverted_cov_mat),ones)
-            corrected_variance_scaling_factor = (ts.max_root_time-node.time)-explained_variance[node.id, node.id]+(unexplained_numerator/unexplained_denominator)
+            corrected_variance_scaling_factor = (ts.max_root_time-ts.node(node).time)-explained_variance[i, i]+(unexplained_numerator/unexplained_denominator)
             #uncorrected_variances_in_node_locations[node.id] = (sigma*uncorrected_variance_scaling_factor)
-            corrected_variances_in_node_locations[node.id] = (sigma*corrected_variance_scaling_factor)
+            corrected_variances_in_node_locations[node] = (sigma*corrected_variance_scaling_factor)
         return sigma, cov_mat, paths, locations_of_nodes, corrected_variances_in_node_locations #, uncorrected_variances_in_node_locations
     
     return sigma, cov_mat, paths
