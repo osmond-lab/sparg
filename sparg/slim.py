@@ -28,6 +28,24 @@ def merge_roots(ts):
                 
                 
 def remove_excess_nodes(ts, keep_young_nodes={}):
+    """Removes nodes in tree sequence output from SLiM
+
+
+
+    Parameters
+    ----------
+    ts : tskit.trees.TreeSequence
+    keep_young_nodes (optional) : dictionary
+        Used when tracking the lineages in recent time. This dictionary has two keys: "below" and "step". Keeps nodes younger than
+        "below" with gaps between nodes set by "step".
+
+    Returns
+    -------
+    ts_final :
+    maps : 
+    critical_nodes_mapped : 
+    """
+
     ts_tables = ts.dump_tables()
     node_table = ts_tables.nodes
     flags = node_table.flags

@@ -1,5 +1,6 @@
 import numpy as np
 import math
+import networkx as nx
 
 
 def manually_add_node_below_recombination_event(ts):
@@ -52,3 +53,40 @@ def add_nodes_along_sample_paths(ts, tracked_samples):
         nodes_to_do.pop(0)
     tables.sort()
     return tables.tree_sequence()
+
+
+def locate_loop_group_nodes(ARG):
+    """
+    First calculates the cycle basis of the graph (this utilizes the ARG with connected
+    recombination nodes), then groups those loops based on whether they are interconnected.
+    Returns a list of lists of nodes that are interconnected by loops in the ARG.
+
+    THE OUTPUT HAS BEEN CHANGED FROM PREVIOUS ITERATIONS. Loops themselves are no longer
+    preserved, only loop groups.
+    """
+    
+    loop_list = nx.cycle_basis(ARG.nx_graph_connected_recomb_nodes.to_undirected())
+    edges = ARG.ts.tables.edges
+    parent_list = list(edges.parent)
+    child_list = list(edges.child)
+    if len(loop_list) != len(ARG.recomb_nodes)/2:
+        for node in ARG.recomb_nodes[::2]:
+            parent = parent_list[child_list.index(node)]
+            if parent == parent_list[child_list.index(node+1)]:
+                loop_list.append([node, parent])
+    num_loops = len(loop_list)
+    loop_group_nodes = []
+    if num_loops > 1:
+        build_instructions = []
+        for loop in loop_list:
+            for n in range(len(loop)):
+                if n == len(loop)-1:
+                    a, b = loop[n], loop[0]
+                else:
+                    a, b = loop[n], loop[n+1]
+                build_instructions.append([a, b])
+        g = nx.Graph(build_instructions)
+        loop_group_nodes = list(nx.connected_components(g))
+    elif num_loops == 1:
+        loop_group_nodes = [set(loop_list[0])]
+    return loop_group_nodes
