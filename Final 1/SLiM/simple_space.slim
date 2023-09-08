@@ -1,16 +1,16 @@
 //adapted from https://pyslim.readthedocs.io/en/latest/vignette_space.html
 initialize() {
-    // defineConstant("SIGMA_disp", 0.25);
-	 // defineConstant("rep",1);
-    defineConstant("fname", "slim_" + SIGMA_disp + "rep"+rep+ "sigma.trees");
-    // defineConstant("fname", "trial.trees");
+    defineConstant("SIGMA_disp", 0.25);
+	 defineConstant("rep",1);
+    // defineConstant("fname", "slim_" + SIGMA_disp + "rep"+rep+ "sigma.trees");
+    defineConstant("fname", "trial.trees");
     defineConstant("L",1e6);
     defineConstant("r",1e-8);
     defineConstant("R",2);
     defineConstant("SIGMA_int",1);
     defineConstant("K",1);
     defineConstant("W",100.0); 
-    defineConstant("t",1e4); 
+    defineConstant("t",1000); 
     defineConstant("N0",10000);
 	 setSeed(rep); // set seed for repeatability
     initializeSLiMModelType("nonWF"); // non Wright Fisher
@@ -43,13 +43,14 @@ reproduction() {
 1 early() {
     community.rescheduleScriptBlock(s1, start=t, end=t); //set up end of simulation
     sim.addSubpop("p1", N0); //initial popn size
-    p1.setSpatialBounds(c(0.0, 0.0, W, W)); //set spatial plane
-    //p1.individuals.setSpatialPosition(p1.pointUniform(N0))); // start with uniform distribution across range
-    p1.individuals.setSpatialPosition(c(W/2,W/2));
+    p1.setSpatialBounds(c(0, 0, W, W)); //set spatial plane
+    p1.individuals.setSpatialPosition(p1.pointUniform(N0)); // start with uniform distribution across range
+    //p1.individuals.setSpatialPosition(c(W/2,W/2));
 }
 
 early() {
-    //catn(community.tick); 
+    catn(community.tick); 
+    
     // survival probabilities
     p1.fitnessScaling = 1;
     inds = sim.subpopulations.individuals;
@@ -57,6 +58,7 @@ early() {
 }
 
 late() {
+    catn(p1.individualCount);
     i1.evaluate(p1); //calculate interactions
     sim.treeSeqRememberIndividuals(p1.individuals, permanent=F); //remember individuals only if ancestors of final population
 }
