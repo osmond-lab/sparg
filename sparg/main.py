@@ -66,7 +66,7 @@ def calc_covariance_matrix(ts, internal_nodes=[]):
     """
     
     edges = ts.tables.edges
-    cov_mat = np.zeros(shape=(ts.num_samples, ts.num_samples))  #Initialize the covariance matrix. Initial size = #samples. Will increase to #paths
+    cov_mat = np.zeros(shape=(ts.num_samples, ts.num_samples), dtype=np.float64)  #Initialize the covariance matrix. Initial size = #samples. Will increase to #paths
     indices = defaultdict(list) #Keeps track of the indices of paths that enter (from bottom) a particular node.
     paths = []
     for i, sample in enumerate(ts.samples()):
@@ -170,7 +170,7 @@ def build_roots_array(paths):
 
     roots = [row[-1] for row in paths]
     unique_roots = np.unique(roots)
-    roots_array = np.zeros((len(paths), len(unique_roots)))
+    roots_array = np.zeros((len(paths), len(unique_roots)), dtype=np.float64)
     for i,root in enumerate(unique_roots): 
         for path in np.where(roots == root)[0]:
             roots_array[path][i] += 1.0
@@ -200,6 +200,7 @@ def locate_roots(inverted_cov_mat, roots_array, locations_of_path_starts):
         raise RuntimeError("Cannot locate roots. No solution to system of linear equations.")
     else:
         if len(pivots) != A.shape[0]:
+            print("Multiple solutions to system of linear equations in root location calculation.")
             warnings.warn("Multiple solutions to system of linear equations in root location calculation.")
         return np.array(rre_form.col(range(-locations_of_path_starts.shape[1],0)))
     

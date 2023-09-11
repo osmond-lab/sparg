@@ -24,9 +24,8 @@ def merge_roots(ts):
     edge_table.parent = parent 
     ts_tables.sort() 
     ts_new = ts_tables.tree_sequence() 
-    return ts_new 
-                
-                
+    return ts_new
+                  
 def remove_excess_nodes(ts, keep_young_nodes={}):
     """Removes nodes in tree sequence output from SLiM
 
