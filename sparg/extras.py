@@ -1,7 +1,31 @@
 import numpy as np
 import math
 import networkx as nx
+from collections import defaultdict
+from itertools import chain
 
+
+def ts_to_nx(ts, connect_recombination_nodes=False, recomb_nodes=[]):
+    """
+    Converts tskit tree sequence to networkx graph.
+    """
+    topology = defaultdict(list)
+    for tree in ts.trees():
+        for k, v in chain(tree.parent_dict.items()):
+            if connect_recombination_nodes:
+                if recomb_nodes == []:
+                    recomb_nodes = list(np.where(ts.tables.nodes.flags == 131072)[0])
+                if v in recomb_nodes and recomb_nodes.index(v)%2 == 1:
+                    v -= 1
+                if k in recomb_nodes and recomb_nodes.index(k)%2 == 1:
+                    k -= 1
+                if v not in topology[k]:
+                    topology[k].append(v)
+            else:
+                if v not in topology[k]:
+                    topology[k].append(v)
+    nx_graph = nx.MultiDiGraph(topology)
+    return nx_graph
 
 def manually_add_node_below_recombination_event(ts):
     tables = ts.dump_tables()
@@ -90,3 +114,102 @@ def locate_loop_group_nodes(ARG):
     elif num_loops == 1:
         loop_group_nodes = [set(loop_list[0])]
     return loop_group_nodes
+
+def remove_unattached_nodes(ts):
+    ts_nx = ts_to_nx(ts=ts)
+    sub_graphs = nx.connected_components(ts_nx.to_undirected())
+    attached_nodes = []
+    for sg in sub_graphs:
+        for node in sg:
+            attached_nodes.append(node)
+    critical_nodes = []
+    for node in ts.nodes():
+        if node.id in attached_nodes:
+            critical_nodes.append(node.id)
+    ts_final, maps = ts.simplify(samples=critical_nodes, map_nodes = True, keep_input_roots=False, keep_unary=False, update_sample_flags = False)
+    return ts_final, maps
+
+def merge_unnecessary_roots(ts):
+    ts_tables = ts.dump_tables()
+    edge_table = ts_tables.edges 
+    parent = edge_table.parent
+    roots = np.where(ts_tables.nodes.time == ts.max_time)[0]
+    children = defaultdict(list)
+    for root in roots:
+        root_children = edge_table.child[np.where(edge_table.parent == root)[0]]
+        if len(root_children) > 1:
+            print(root, "has multiple children! Merge roots with caution.")
+        for child in root_children:
+            children[child] += [root]
+    for child in children:
+        pts = children[child]
+        if len(pts) > 1:
+            for pt in pts:
+                parent[np.where(ts.tables.edges.parent == pt)[0]] = pts[0]
+    edge_table.parent = parent 
+    ts_tables.sort() 
+    ts_new = ts_tables.tree_sequence() 
+    return ts_new
+
+def new_remove_useless_nodes(ts):
+    uniq_child_parent = np.unique(np.column_stack((ts.edges_child, ts.edges_parent)), axis=0) #Find unique parent-child pairs. 
+    nd, count = np.unique(uniq_child_parent[:, 1], return_counts=True) #For each child, count how many parents it has. 
+    coal_nodes = nd[count > 1] #Find parent who have more than 1 children.
+    recomb_nodes_first_id = np.where(ts.tables.nodes.flags==131072)[0][::2]
+    important_recomb_nodes = []
+    for node in recomb_nodes_first_id:
+        if node in uniq_child_parent[:,0]:# or (node in uniq_child_parent[:,1]):
+            if (node+1) in uniq_child_parent[:,0]:# or (node+1 in uniq_child_parent[:,1]):
+                #print(uniq_child_parent[np.where(uniq_child_parent[:,0]==348)[0],:])
+                important_recomb_nodes.append(node)
+                important_recomb_nodes.append(node+1)
+    roots = np.where(ts.tables.nodes.time == ts.max_time)[0]
+    critical_nodes = list(np.unique( list(ts.samples()) + list(np.unique(important_recomb_nodes)) + list(np.unique(coal_nodes)) + list(np.unique(roots))))  
+    ts_final, maps = ts.simplify(samples=critical_nodes, map_nodes = True, keep_input_roots=False, keep_unary=False, update_sample_flags = False)
+    return ts_final, maps
+
+
+def remove_useless_nodes(ts):
+    uniq_child_parent = np.unique(np.column_stack((ts.edges_child, ts.edges_parent)), axis=0) #Find unique parent-child pairs. 
+    nd, count = np.unique(uniq_child_parent[:, 1], return_counts=True) #For each child, count how many parents it has. 
+    coal_nodes = nd[count > 1] #Find parent who have more than 1 children.
+    recomb_nodes_first_id = np.where(ts.tables.nodes.flags==131072)[0][::2]
+    important_recomb_nodes = []
+    for node in recomb_nodes_first_id:
+        if node in uniq_child_parent[:,0]:# or (node in uniq_child_parent[:,1]):
+            if (node+1) in uniq_child_parent[:,0]:# or (node+1 in uniq_child_parent[:,1]):
+                #print(uniq_child_parent[np.where(uniq_child_parent[:,0]==348)[0],:])
+                important_recomb_nodes.append(node)
+                important_recomb_nodes.append(node+1)
+    critical_nodes = list(np.unique( list(ts.samples()) + list(np.unique(important_recomb_nodes)) + list(np.unique(coal_nodes)) ))  
+    
+    #for node in critical_nodes[:]:
+    #    if node not in all_nodes:
+    #        critical_nodes.remove(node)
+    #node_counts = []
+    #for graph in sub_graphs:
+    #    node_counts.append(len(graph))
+    #critical_nodes = list(sub_graphs[np.argmax(node_counts)])
+    ts_final, maps = ts.simplify(samples=critical_nodes, map_nodes = True, keep_input_roots=False, keep_unary=False, update_sample_flags = False)
+    return ts_final, maps
+
+
+def special_merge_roots(ts): 
+    ts_tables = ts.dump_tables() 
+    edge_table = ts_tables.edges 
+    parent = edge_table.parent 
+    
+    roots = np.where(ts_tables.nodes.time == ts.max_time)[0]
+    print(roots)
+    root_children = []
+    for root in roots:
+        root_children += list(ts.tables.edges.child[np.where(ts.tables.edges.parent == root)[0]])
+    for root_child in root_children: 
+        pts = np.unique(ts.tables.edges.parent[np.where(ts.tables.edges.child == root_child)[0]])
+        if len(pts) > 2 : 
+            for i,pt in enumerate(pts): 
+                parent[np.where(ts.tables.edges.parent == pt)[0]] = pts[0] 
+    edge_table.parent = parent 
+    ts_tables.sort() 
+    ts_new = ts_tables.tree_sequence() 
+    return ts_new
