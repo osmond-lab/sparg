@@ -245,7 +245,8 @@ def estimate_spatial_parameters(ts, locations_of_individuals={}, return_ancestra
     root_locations_vector = np.matmul(roots_array, root_locations)
     
     # calculate dispersal rate
-    sigma = np.matmul(np.matmul(np.transpose(locations_of_path_starts - root_locations_vector), inverted_cov_mat), (locations_of_path_starts - root_locations_vector))/(ts.num_samples-len(roots))
+    # this is the uncorrected dispersal rate. (in the future we may want to change this to the corrected version which takes into account the number of roots: -len(roots))
+    sigma = np.matmul(np.matmul(np.transpose(locations_of_path_starts - root_locations_vector), inverted_cov_mat), (locations_of_path_starts - root_locations_vector))/(ts.num_samples)
     
     # calculate locations of nodes
     if len(return_ancestral_node_positions)>0:
