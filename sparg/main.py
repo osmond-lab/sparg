@@ -3,6 +3,7 @@ from collections import defaultdict
 import sympy as sym
 import warnings
 from tqdm import tqdm
+import time
 
 
 def get_tskit_locations(ts, dimensions=2):
@@ -232,24 +233,27 @@ def estimate_spatial_parameters(ts, locations_of_individuals={}, return_ancestra
     #if len(tracked_samples) > 0:
     #    ts = add_nodes_along_sample_paths(ts=ts, tracked_samples=tracked_samples)
         #viz.D3ARG(ts=ts).draw(width=1000, height=700, edge_type="line")    
+    start = time.time()
     if locations_of_individuals == {}:  # if user doesn't provide a separate locations dictionary, builds one
         locations_of_individuals = get_tskit_locations(ts=ts, dimensions=dimensions)
     return_ancestral_node_positions = [x for x in return_ancestral_node_positions if x <= ts.node(ts.num_nodes-1).id]
-    print("Calculating covariance matrix")
+    print("Calculating covariance matrix", start-time.time())
     if len(return_ancestral_node_positions)>0:
         cov_mat, paths, node_shared_times, node_paths = calc_covariance_matrix(ts=ts, internal_nodes=return_ancestral_node_positions)
     else:
         cov_mat, paths = calc_covariance_matrix(ts=ts)
-    locations_of_path_starts, locations_of_samples = expand_locations(locations_of_individuals=locations_of_individuals, ts=ts, paths=paths)
+    print("Inverting covariance matrix", start-time.time())
     inverted_cov_mat = np.linalg.pinv(cov_mat)
-    print("Locating roots")
+    print("Locating starts", start-time.time())
+    locations_of_path_starts, locations_of_samples = expand_locations(locations_of_individuals=locations_of_individuals, ts=ts, paths=paths)
+    print("Locating roots", start-time.time())
     roots_array, roots = build_roots_array(paths)
     root_locations = locate_roots(inverted_cov_mat=inverted_cov_mat, roots_array=roots_array, locations_of_path_starts=locations_of_path_starts)
     root_locations_vector = np.matmul(roots_array, root_locations)
     
     # calculate dispersal rate
     # this is the uncorrected dispersal rate. (in the future we may want to change this to the corrected version which takes into account the number of roots: -len(roots))
-    print("Estimating dispersal rate")
+    print("Estimating dispersal rate", start-time.time())
     sample_locs_to_root_locs = locations_of_path_starts - root_locations_vector
     if n_r:
         sigma = np.matmul(np.matmul(np.transpose(sample_locs_to_root_locs), inverted_cov_mat), sample_locs_to_root_locs)/(ts.num_samples-len(roots))
@@ -258,7 +262,7 @@ def estimate_spatial_parameters(ts, locations_of_individuals={}, return_ancestra
     
     # calculate locations of nodes
     if len(return_ancestral_node_positions)>0:
-        print("Reconstructing ancestral locations")
+        print("Reconstructing ancestral locations", start-time.time())
         node_path_roots = [path[-1] for path in node_paths]
         node_path_root_locations = np.array([root_locations[np.where(roots == rt)[0]][0] for rt in node_path_roots])
         matmul_prod = np.matmul(node_shared_times, inverted_cov_mat)
