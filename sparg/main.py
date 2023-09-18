@@ -2,9 +2,10 @@ import numpy as np
 from collections import defaultdict
 import sympy as sym
 import warnings
+from tqdm import tqdm
 
 
-def get_tskit_locations(ts):
+def get_tskit_locations(ts, dimensions=2):
     """Converts the tskit individuals locations into a dictionary.
 
     Parameters
@@ -27,7 +28,7 @@ def get_tskit_locations(ts):
     locations = np.array_split(ts.tables.individuals.location, ts.num_individuals)
     locations_of_individuals = {}
     for i,location in enumerate(locations):
-        locations_of_individuals[i] = location
+        locations_of_individuals[i] = location[:dimensions]
     return locations_of_individuals
 
 
@@ -66,7 +67,7 @@ def calc_covariance_matrix(ts, internal_nodes=[]):
     """
     
     edges = ts.tables.edges
-    cov_mat = np.zeros(shape=(ts.num_samples, ts.num_samples), dtype=np.float64)  #Initialize the covariance matrix. Initial size = #samples. Will increase to #paths
+    cov_mat = np.zeros(shape=(ts.num_samples, ts.num_samples))#, dtype=np.float64)  #Initialize the covariance matrix. Initial size = #samples. Will increase to #paths
     indices = defaultdict(list) #Keeps track of the indices of paths that enter (from bottom) a particular node.
     paths = []
     for i, sample in enumerate(ts.samples()):
@@ -79,7 +80,7 @@ def calc_covariance_matrix(ts, internal_nodes=[]):
         internal_paths = [ [nd] for nd in internal_nodes ]
     shared_time = np.zeros(shape=(len(int_nodes),ts.num_samples)) 
     internal_indices = defaultdict(list) #For each path, identifies internal nodes that are using that path for shared times.
-    for node in ts.nodes(order="timeasc"):
+    for node in tqdm(ts.nodes(order="timeasc")):
         path_ind = indices[node.id]
         parent_nodes = np.unique(edges.parent[np.where(edges.child == node.id)])
         if len(internal_nodes) != 0: 
@@ -141,7 +142,7 @@ def expand_locations(locations_of_individuals, ts, paths):
     locations_of_path_starts = []
     for path in paths:
         locations_of_path_starts.append(locations_of_samples[path[0]])
-    locations_of_path_starts = np.array(locations_of_path_starts)
+    locations_of_path_starts = np.array(locations_of_path_starts)#, dtype=np.float64)
     if len(locations_of_path_starts.shape) == 1:
         raise RuntimeError("Path locations vector is missing number of columns. Cannot process.")
     return locations_of_path_starts, locations_of_samples # I don't know why reshape is needed here
@@ -170,7 +171,7 @@ def build_roots_array(paths):
 
     roots = [row[-1] for row in paths]
     unique_roots = np.unique(roots)
-    roots_array = np.zeros((len(paths), len(unique_roots)), dtype=np.float64)
+    roots_array = np.zeros((len(paths), len(unique_roots)))#, dtype=np.float64)
     for i,root in enumerate(unique_roots): 
         for path in np.where(roots == root)[0]:
             roots_array[path][i] += 1.0
@@ -205,7 +206,7 @@ def locate_roots(inverted_cov_mat, roots_array, locations_of_path_starts):
         return np.array(rre_form.col(range(-locations_of_path_starts.shape[1],0)))
     
 
-def estimate_spatial_parameters(ts, locations_of_individuals={}, return_ancestral_node_positions=[], n_r=False):
+def estimate_spatial_parameters(ts, locations_of_individuals={}, return_ancestral_node_positions=[], n_r=False, dimensions=2):
     """Calculates maximum likelihood dispersal rate and the locations of ancestral nodes.
 
     Parameters
@@ -232,45 +233,48 @@ def estimate_spatial_parameters(ts, locations_of_individuals={}, return_ancestra
     #    ts = add_nodes_along_sample_paths(ts=ts, tracked_samples=tracked_samples)
         #viz.D3ARG(ts=ts).draw(width=1000, height=700, edge_type="line")    
     if locations_of_individuals == {}:  # if user doesn't provide a separate locations dictionary, builds one
-        locations_of_individuals = get_tskit_locations(ts=ts)
+        locations_of_individuals = get_tskit_locations(ts=ts, dimensions=dimensions)
     return_ancestral_node_positions = [x for x in return_ancestral_node_positions if x <= ts.node(ts.num_nodes-1).id]
+    print("Calculating covariance matrix")
     if len(return_ancestral_node_positions)>0:
         cov_mat, paths, node_shared_times, node_paths = calc_covariance_matrix(ts=ts, internal_nodes=return_ancestral_node_positions)
     else:
         cov_mat, paths = calc_covariance_matrix(ts=ts)
     locations_of_path_starts, locations_of_samples = expand_locations(locations_of_individuals=locations_of_individuals, ts=ts, paths=paths)
     inverted_cov_mat = np.linalg.pinv(cov_mat)
-    roots_array, roots = build_roots_array(paths) 
+    print("Locating roots")
+    roots_array, roots = build_roots_array(paths)
     root_locations = locate_roots(inverted_cov_mat=inverted_cov_mat, roots_array=roots_array, locations_of_path_starts=locations_of_path_starts)
     root_locations_vector = np.matmul(roots_array, root_locations)
     
     # calculate dispersal rate
     # this is the uncorrected dispersal rate. (in the future we may want to change this to the corrected version which takes into account the number of roots: -len(roots))
+    print("Estimating dispersal rate")
+    sample_locs_to_root_locs = locations_of_path_starts - root_locations_vector
     if n_r:
-        sigma = np.matmul(np.matmul(np.transpose(locations_of_path_starts - root_locations_vector), inverted_cov_mat), (locations_of_path_starts - root_locations_vector))/(ts.num_samples-len(roots))
+        sigma = np.matmul(np.matmul(np.transpose(sample_locs_to_root_locs), inverted_cov_mat), sample_locs_to_root_locs)/(ts.num_samples-len(roots))
     else:
-        sigma = np.matmul(np.matmul(np.transpose(locations_of_path_starts - root_locations_vector), inverted_cov_mat), (locations_of_path_starts - root_locations_vector))/(ts.num_samples)
+        sigma = np.matmul(np.matmul(np.transpose(sample_locs_to_root_locs), inverted_cov_mat), sample_locs_to_root_locs)/(ts.num_samples)
     
     # calculate locations of nodes
     if len(return_ancestral_node_positions)>0:
+        print("Reconstructing ancestral locations")
         node_path_roots = [path[-1] for path in node_paths]
         node_path_root_locations = np.array([root_locations[np.where(roots == rt)[0]][0] for rt in node_path_roots])
-        node_locations = node_path_root_locations + np.matmul(np.matmul(node_shared_times, inverted_cov_mat), locations_of_path_starts - root_locations_vector)
+        matmul_prod = np.matmul(node_shared_times, inverted_cov_mat)
+        node_locations = node_path_root_locations + np.matmul(matmul_prod, sample_locs_to_root_locs)
         locations_of_nodes = {}
         for i,node in enumerate(return_ancestral_node_positions):
             locations_of_nodes[node] = node_locations[i].tolist()
-        explained_variance = np.matmul(np.matmul(node_shared_times, inverted_cov_mat), np.transpose(node_shared_times))
+        explained_variance = np.matmul(matmul_prod, np.transpose(node_shared_times))
         ones = np.ones(inverted_cov_mat.shape[0])
-        #uncorrected_variances_in_node_locations = {}
+        unexplained_denominator = np.matmul(np.matmul(np.transpose(ones),inverted_cov_mat),ones)
         corrected_variances_in_node_locations = {}
-        for i,node in enumerate(return_ancestral_node_positions):
-            #uncorrected_variance_scaling_factor = (ts.max_root_time-node.time)-explained_variance[node.id, node.id]
+        for i,node in enumerate(tqdm(return_ancestral_node_positions)):
             node_specific_sharing = node_shared_times[i,:]
             unexplained_numerator = (1-np.matmul(np.matmul(np.transpose(node_specific_sharing),inverted_cov_mat),ones))**2
-            unexplained_denominator = np.matmul(np.matmul(np.transpose(ones),inverted_cov_mat),ones)
             corrected_variance_scaling_factor = (ts.max_root_time-ts.node(node).time)-explained_variance[i, i]+(unexplained_numerator/unexplained_denominator)
-            #uncorrected_variances_in_node_locations[node.id] = (sigma*uncorrected_variance_scaling_factor)
             corrected_variances_in_node_locations[node] = (sigma*corrected_variance_scaling_factor)
-        return sigma, cov_mat, paths, locations_of_nodes, corrected_variances_in_node_locations #, uncorrected_variances_in_node_locations
+        return sigma, cov_mat, paths, locations_of_nodes, corrected_variances_in_node_locations
     
     return sigma, cov_mat, paths

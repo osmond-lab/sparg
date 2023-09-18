@@ -3,3 +3,4 @@ sympy
 matplotlib
 tskit_arg_visualizer
 networkx
+tqdm
