@@ -2,7 +2,6 @@ import msprime
 import numpy as np
 import tskit
 import networkx as nx
-import warnings
 from . import comparisons
 
 
@@ -25,12 +24,25 @@ def merge_roots(ts):
     ts_tables.sort() 
     ts_new = ts_tables.tree_sequence() 
     return ts_new
-                  
-def remove_excess_nodes(ts, keep_young_nodes={}):
+
+def add_recomb_node_flags_to_ts(ts):
+    ts_tables = ts.dump_tables()
+    node_table = ts_tables.nodes
+    flags = node_table.flags
+    uniq_child_parent = np.unique(np.column_stack((ts.edges_child, ts.edges_parent)), axis=0) #Find unique parent-child pairs. 
+    nd, count = np.unique(uniq_child_parent[:, 0], return_counts=True) #For each child, count how many parents it has. 
+    multiple_parents = nd[count > 1] #Find children who have more than 1 parent. 
+    recomb_nodes = ts.edges_parent[np.in1d(ts.edges_child, multiple_parents)] #Find the parent nodes of the children with multiple parents. 
+    flags[recomb_nodes] = msprime.NODE_IS_RE_EVENT
+    node_table.flags = flags
+    ts_tables.sort() 
+    return ts_tables.tree_sequence()
+
+
+def remove_excess_nodes(ts, keep_unary_roots=False, keep_young_nodes={}):
     """Removes nodes in tree sequence output from SLiM
 
-
-
+    
     Parameters
     ----------
     ts : tskit.trees.TreeSequence
@@ -49,6 +61,8 @@ def remove_excess_nodes(ts, keep_young_nodes={}):
     node_table = ts_tables.nodes
     flags = node_table.flags
     
+    roots = np.where(ts.tables.nodes.time == ts.max_time)[0]
+
     recomb_nodes = []
     coal_nodes = []
     
@@ -64,12 +78,14 @@ def remove_excess_nodes(ts, keep_young_nodes={}):
     node_table.flags = flags
     ts_tables.sort() 
     ts_new = ts_tables.tree_sequence()
-    
-    critical_nodes = list(np.unique( list(ts_new.samples()) + list(np.unique(recomb_nodes)) + list(np.unique(coal_nodes)) ))  
+
+    critical_nodes = list(ts_new.samples()) + list(recomb_nodes) + list(coal_nodes)
+    if keep_unary_roots:
+        critical_nodes += list(roots)
     if len(keep_young_nodes) > 0:
         keep_nodes = list(np.unique(critical_nodes + list(np.where((node_table.time<=keep_young_nodes["below"]) & (node_table.time%keep_young_nodes["step"]==0))[0])))
     else:
-        keep_nodes = critical_nodes
+        keep_nodes = list(np.unique(critical_nodes))
     ts_final, maps = ts_new.simplify(samples=keep_nodes, map_nodes = True, keep_input_roots=False, keep_unary=False, update_sample_flags = False)
     critical_nodes_mapped = []
     for node in critical_nodes:
@@ -78,6 +94,21 @@ def remove_excess_nodes(ts, keep_young_nodes={}):
 
 
 def identify_gmrca(ts):
+    """Returns the ID of the grand most recent common ancestor of the ARG, if one exists.
+
+    Parameters
+    ----------
+    ts : tskit.trees.TreeSequence
+        This must be a "full" ARG, though node flags are not needed. Simplified tree sequences
+        will return the deepest root in the tree sequence but not necessarily the GMRCA.
+
+    Returns
+    -------
+    gmrca : int
+        The ID of the grand most recent common ancestor. If none exists, return -1.
+
+    """
+
     edge_by_time = np.empty((ts.num_edges, 4))
     for i,edge in enumerate(ts.edges()):
         edge_by_time[i,0] = i
@@ -91,8 +122,9 @@ def identify_gmrca(ts):
             active_edges = edges_start_before_time[edges_start_before_time[:,3]>node.time,:]
             other_edges = active_edges[active_edges[:,1]!=node.id,0]
             if len(other_edges) == 0:
-                gmrca = node.id
-                break
+                if len(np.where(ts.tables.nodes.time == node.time)[0]) == 1:
+                    gmrca = node.id
+                    break
     return gmrca
 
 
@@ -101,7 +133,7 @@ def cut_ts_at_gmrca(ts):
     if gmrca != -1:
         return ts.subset(nodes=list(range(gmrca+1)))
     else:
-        warnings.warn("Tree sequence does not have a GMRCA - did not cut.")
+        print("Tree sequence does not have a GMRCA - did not cut.")
         return ts
     
 

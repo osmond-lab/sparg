@@ -205,7 +205,7 @@ def locate_roots(inverted_cov_mat, roots_array, locations_of_path_starts):
         return np.array(rre_form.col(range(-locations_of_path_starts.shape[1],0)))
     
 
-def estimate_spatial_parameters(ts, locations_of_individuals={}, return_ancestral_node_positions=[]):
+def estimate_spatial_parameters(ts, locations_of_individuals={}, return_ancestral_node_positions=[], n_r=False):
     """Calculates maximum likelihood dispersal rate and the locations of ancestral nodes.
 
     Parameters
@@ -246,7 +246,10 @@ def estimate_spatial_parameters(ts, locations_of_individuals={}, return_ancestra
     
     # calculate dispersal rate
     # this is the uncorrected dispersal rate. (in the future we may want to change this to the corrected version which takes into account the number of roots: -len(roots))
-    sigma = np.matmul(np.matmul(np.transpose(locations_of_path_starts - root_locations_vector), inverted_cov_mat), (locations_of_path_starts - root_locations_vector))/(ts.num_samples)
+    if n_r:
+        sigma = np.matmul(np.matmul(np.transpose(locations_of_path_starts - root_locations_vector), inverted_cov_mat), (locations_of_path_starts - root_locations_vector))/(ts.num_samples-len(roots))
+    else:
+        sigma = np.matmul(np.matmul(np.transpose(locations_of_path_starts - root_locations_vector), inverted_cov_mat), (locations_of_path_starts - root_locations_vector))/(ts.num_samples)
     
     # calculate locations of nodes
     if len(return_ancestral_node_positions)>0:
