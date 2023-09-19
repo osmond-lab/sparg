@@ -4,6 +4,42 @@ import sympy as sym
 import warnings
 from tqdm import tqdm
 import time
+import glob
+import os
+import datetime
+
+
+def create_output_directory(output_directory):
+    """
+    Checks whether specified output directory exists and if not creates it.
+
+    Parameters
+    ----------
+    outputDirectory : string
+        path to output directory.
+
+    Returns
+    -------
+    new : boolean
+        True if output directory had to be created.
+
+    """
+    new = False
+    output_file_path = output_directory.split(os.sep)
+    for level in range(len(output_file_path)):    # loops through each level of the path to output directory
+        if output_file_path[level] == "":
+            continue
+        elif level == 0:
+            if ":" in output_file_path[level]:
+                continue
+            if output_file_path[level] not in glob.glob("*"): # checks whether directory exists at that level
+                os.mkdir(output_file_path[level]) # if it doesn't, creates it
+                new = True
+        else:
+            if os.sep.join(output_file_path[:level + 1]) not in glob.glob(os.sep.join(output_file_path[:level]) + os.sep +"*"):
+                os.mkdir(os.sep.join(output_file_path[:level + 1]))
+                new = True
+    return new
 
 
 def get_tskit_locations(ts, dimensions=2):
@@ -204,10 +240,10 @@ def locate_roots(inverted_cov_mat, roots_array, locations_of_path_starts):
         if len(pivots) != A.shape[0]:
             print("Multiple solutions to system of linear equations in root location calculation.")
             warnings.warn("Multiple solutions to system of linear equations in root location calculation.")
-        return np.array(rre_form.col(range(-locations_of_path_starts.shape[1],0)))
+        return np.array(rre_form.col(range(-locations_of_path_starts.shape[1],0)), dtype=np.float64)
     
 
-def estimate_spatial_parameters(ts, locations_of_individuals={}, return_ancestral_node_positions=[], n_r=False, dimensions=2):
+def estimate_spatial_parameters(ts, record_to, locations_of_individuals={}, return_ancestral_node_positions=[], n_r=False, dimensions=2):
     """Calculates maximum likelihood dispersal rate and the locations of ancestral nodes.
 
     Parameters
@@ -229,40 +265,72 @@ def estimate_spatial_parameters(ts, locations_of_individuals={}, return_ancestra
     locations_of_nodes :
     """
 
-    #viz.D3ARG(ts=ts).draw(width=1000, height=700, edge_type="line")
-    #if len(tracked_samples) > 0:
-    #    ts = add_nodes_along_sample_paths(ts=ts, tracked_samples=tracked_samples)
-        #viz.D3ARG(ts=ts).draw(width=1000, height=700, edge_type="line")    
-    start = time.time()
+
+    total_start_time = time.time()
+
+    try:
+        createOutputDirectory(record_to)
+    except OSError:
+        print("ERROR: Creation of the directory %s failed. Please select a different -outDirectory path and try again!" % record_to)
+        exit()
+
+    log_file = open(record_to + "/log.txt", "w")
+    
+    section_start_time = time.time()
     if locations_of_individuals == {}:  # if user doesn't provide a separate locations dictionary, builds one
         locations_of_individuals = get_tskit_locations(ts=ts, dimensions=dimensions)
     return_ancestral_node_positions = [x for x in return_ancestral_node_positions if x <= ts.node(ts.num_nodes-1).id]
-    print("Calculating covariance matrix", start-time.time())
+    print(f"Prepared input parameters - Section Elapsed Time: {time.time()-section_start_time} - Total Elapsed Time: {time.time()-total_start_time}")
+    log_file.write(f"Prepared input parameters - Section Elapsed Time: {time.time()-section_start_time} - Total Elapsed Time: {time.time()-total_start_time}\n")
+
+    section_start_time = time.time()
     if len(return_ancestral_node_positions)>0:
         cov_mat, paths, node_shared_times, node_paths = calc_covariance_matrix(ts=ts, internal_nodes=return_ancestral_node_positions)
     else:
         cov_mat, paths = calc_covariance_matrix(ts=ts)
-    print("Inverting covariance matrix", start-time.time())
+    print(f"Calculated covariance matrix - Section Elapsed Time: {time.time()-section_start_time} - Total Elapsed Time: {time.time()-total_start_time}")
+    log_file.write(f"Calculated covariance matrix - Section Elapsed Time: {time.time()-section_start_time} - Total Elapsed Time: {time.time()-total_start_time}\n")
+
+    np.savetxt(record_to + "/cov_mat.csv", cov_mat, delimiter=",")
+    with open(record_to + "/paths.txt", "w") as f:
+        for path in paths:
+            f.write(f"{path}\n")
+
+    section_start_time = time.time()
     inverted_cov_mat = np.linalg.pinv(cov_mat)
-    print("Locating starts", start-time.time())
+    print(f"Inverted covariance matrix - Section Elapsed Time: {time.time()-section_start_time} - Total Elapsed Time: {time.time()-total_start_time}")
+    log_file.write(f"Inverted covariance matrix - Section Elapsed Time: {time.time()-section_start_time} - Total Elapsed Time: {time.time()-total_start_time}\n")
+    np.savetxt(record_to + "/inv_cov_mat.csv", inverted_cov_mat, delimiter=",")
+
+    section_start_time = time.time()
     locations_of_path_starts, locations_of_samples = expand_locations(locations_of_individuals=locations_of_individuals, ts=ts, paths=paths)
-    print("Locating roots", start-time.time())
     roots_array, roots = build_roots_array(paths)
     root_locations = locate_roots(inverted_cov_mat=inverted_cov_mat, roots_array=roots_array, locations_of_path_starts=locations_of_path_starts)
     root_locations_vector = np.matmul(roots_array, root_locations)
+    print(f"Created root locations vector - Section Elapsed Time: {time.time()-section_start_time} - Total Elapsed Time: {time.time()-total_start_time}")
+    log_file.write(f"Created root locations vector - Section Elapsed Time: {time.time()-section_start_time} - Total Elapsed Time: {time.time()-total_start_time}\n")
+    #with open(record_to + "/roots.txt", "w") as f:
+    #    for start in locations_of_path_starts:
+    #        f.write(f"{start}\n")
+    #np.savetxt(record_to + "/roots.csv", roots, delimiter=",")
+    #np.savetxt(record_to + "/root_locations.csv", root_locations_vector, delimiter=",")
     
+    section_start_time = time.time()
     # calculate dispersal rate
     # this is the uncorrected dispersal rate. (in the future we may want to change this to the corrected version which takes into account the number of roots: -len(roots))
-    print("Estimating dispersal rate", start-time.time())
     sample_locs_to_root_locs = locations_of_path_starts - root_locations_vector
     if n_r:
         sigma = np.matmul(np.matmul(np.transpose(sample_locs_to_root_locs), inverted_cov_mat), sample_locs_to_root_locs)/(ts.num_samples-len(roots))
     else:
         sigma = np.matmul(np.matmul(np.transpose(sample_locs_to_root_locs), inverted_cov_mat), sample_locs_to_root_locs)/(ts.num_samples)
-    
+    print(f"Estimated dispersal rate - Section Elapsed Time: {time.time()-section_start_time} - Total Elapsed Time: {time.time()-total_start_time}")
+    log_file.write(f"Estimated dispersal rate - Section Elapsed Time: {time.time()-section_start_time} - Total Elapsed Time: {time.time()-total_start_time}\n")
+    np.savetxt(record_to + "/dispersal_rate.csv", sigma, delimiter=",")
+
     # calculate locations of nodes
     if len(return_ancestral_node_positions)>0:
-        print("Reconstructing ancestral locations", start-time.time())
+        
+        section_start_time = time.time()
         node_path_roots = [path[-1] for path in node_paths]
         node_path_root_locations = np.array([root_locations[np.where(roots == rt)[0]][0] for rt in node_path_roots])
         matmul_prod = np.matmul(node_shared_times, inverted_cov_mat)
@@ -279,6 +347,15 @@ def estimate_spatial_parameters(ts, locations_of_individuals={}, return_ancestra
             unexplained_numerator = (1-np.matmul(np.matmul(np.transpose(node_specific_sharing),inverted_cov_mat),ones))**2
             corrected_variance_scaling_factor = (ts.max_root_time-ts.node(node).time)-explained_variance[i, i]+(unexplained_numerator/unexplained_denominator)
             corrected_variances_in_node_locations[node] = (sigma*corrected_variance_scaling_factor)
+        print(f"Reconstructed ancestral locations - Section Elapsed Time: {time.time()-section_start_time} - Total Elapsed Time: {time.time()-total_start_time}")
+        log_file.write(f"Reconstructed ancestral locations - Section Elapsed Time: {time.time()-section_start_time} - Total Elapsed Time: {time.time()-total_start_time}\n")
+        
+        with open(record_to + "/locations_of_nodes.txt", "w") as f:
+            for node in locations_of_nodes:
+                f.write(f"{node} {locations_of_nodes[node]} {corrected_variances_in_node_locations[node]}\n")
+
+        log_file.close()
         return sigma, cov_mat, paths, locations_of_nodes, corrected_variances_in_node_locations
     
+    log_file.close()
     return sigma, cov_mat, paths
