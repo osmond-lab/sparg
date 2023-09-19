@@ -269,7 +269,7 @@ def estimate_spatial_parameters(ts, record_to, locations_of_individuals={}, retu
     total_start_time = time.time()
 
     try:
-        createOutputDirectory(record_to)
+        create_output_directory(record_to)
     except OSError:
         print("ERROR: Creation of the directory %s failed. Please select a different -outDirectory path and try again!" % record_to)
         exit()
