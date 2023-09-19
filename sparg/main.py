@@ -69,7 +69,7 @@ def get_tskit_locations(ts, dimensions=2):
     return locations_of_individuals
 
 
-def calc_covariance_matrix(ts, internal_nodes=[]):
+def calc_covariance_matrix(ts, internal_nodes=[], verbose=False):
     """Calculates a covariance matrix between the paths in the the ARG.
 
     Parameters
@@ -117,7 +117,11 @@ def calc_covariance_matrix(ts, internal_nodes=[]):
         internal_paths = [ [nd] for nd in internal_nodes ]
     shared_time = np.zeros(shape=(len(int_nodes),ts.num_samples)) 
     internal_indices = defaultdict(list) #For each path, identifies internal nodes that are using that path for shared times.
-    for node in tqdm(ts.nodes(order="timeasc")):
+    if verbose:
+        nodes = tqdm(ts.nodes(order="timeasc"))
+    else:
+        nodes = ts.nodes(order="timeasc")
+    for node in nodes:
         path_ind = indices[node.id]
         parent_nodes = np.unique(edges.parent[np.where(edges.child == node.id)])
         if len(internal_nodes) != 0: 
@@ -287,9 +291,9 @@ def estimate_spatial_parameters(ts, verbose=False, record_to="", locations_of_in
 
     section_start_time = time.time()
     if len(return_ancestral_node_positions)>0:
-        cov_mat, paths, node_shared_times, node_paths = calc_covariance_matrix(ts=ts, internal_nodes=return_ancestral_node_positions)
+        cov_mat, paths, node_shared_times, node_paths = calc_covariance_matrix(ts=ts, internal_nodes=return_ancestral_node_positions, verbose=verbose)
     else:
-        cov_mat, paths = calc_covariance_matrix(ts=ts)
+        cov_mat, paths = calc_covariance_matrix(ts=ts, verbose=verbose)
     if verbose:
         print(f"Calculated covariance matrix - Section Elapsed Time: {time.time()-section_start_time} - Total Elapsed Time: {time.time()-total_start_time}")
     if record_to:
@@ -351,7 +355,11 @@ def estimate_spatial_parameters(ts, verbose=False, record_to="", locations_of_in
         ones = np.ones(inverted_cov_mat.shape[0])
         unexplained_denominator = np.matmul(np.matmul(np.transpose(ones),inverted_cov_mat),ones)
         corrected_variances_in_node_locations = {}
-        for i,node in enumerate(tqdm(return_ancestral_node_positions)):
+        if verbose:
+            ranp = tqdm(return_ancestral_node_positions)
+        else:
+            ranp = return_ancestral_node_positions
+        for i,node in enumerate(ranp):
             node_specific_sharing = node_shared_times[i,:]
             unexplained_numerator = (1-np.matmul(np.matmul(np.transpose(node_specific_sharing),inverted_cov_mat),ones))**2
             corrected_variance_scaling_factor = (ts.max_root_time-ts.node(node).time)-explained_variance[i, i]+(unexplained_numerator/unexplained_denominator)
