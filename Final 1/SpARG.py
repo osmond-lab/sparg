@@ -67,8 +67,9 @@ def calc_covariance_matrix(ts, internal_nodes = 'None' ):
             for path in path_ind:
                 if i == 0:
                     Paths[path].append(parent)
-                    for internal_path_ind in internal_indices[path]: 
-                        internal_paths[internal_path_ind] += [parent]
+                    if internal_nodes != 'None':
+                        for internal_path_ind in internal_indices[path]: 
+                            internal_paths[internal_path_ind] += [parent]
                 else:
                     Paths.append(Paths[path][:])
                     Paths[-1][-1] = parent
@@ -99,8 +100,9 @@ def calc_covariance_matrix(ts, internal_nodes = 'None' ):
                 for i in path_ind: 
                     int_nodes_update += internal_indices[i]
                 shared_time[ np.ix_( int_nodes_update, new_ind) ] += edge_len
-
-    return CovMat, Paths, [list(int_nodes.keys()),shared_time, internal_paths]
+     
+    # return CovMat, Paths, [list(int_nodes.keys()),shared_time, internal_paths]
+    return CovMat, Paths, [0,0]
 
 
 def MLE(S_inv, loc, path_roots, n) :  
@@ -173,7 +175,7 @@ def MLE(S_inv, loc, path_roots, n) :
         # print( np.average(sigma_list))
         return mu_particular, sigma, roots, R
 
-def ARG_estimate(ts, internal_nodes = 'All', return_roots = False): 
+def ARG_estimate(ts, internal_nodes = 'None', return_roots = False): 
     CM, paths, internal_data = calc_covariance_matrix(ts, internal_nodes = internal_nodes)  
     path_roots = [ row[-1] for row in paths ]
     samples = [ row[0] for row in paths ] 
@@ -184,23 +186,24 @@ def ARG_estimate(ts, internal_nodes = 'All', return_roots = False):
     # print(CM,loc)
     CMinv = np.linalg.pinv(CM)
     mu_roots, sigma, roots, R  = MLE(CMinv, loc, path_roots, len(np.unique(samples)))
+    mu_roots, sigma, roots, R  = MLE(CMinv, loc, path_roots, len(np.unique(samples)))
     
-    internal_path_roots = [ internal_path[-1] for internal_path in internal_data[-1]  ]
+    # internal_path_roots = [ internal_path[-1] for internal_path in internal_data[-1]  ]
     # print(mu_roots, [rt for rt in internal_path_roots])
-    internal_path_root_locations = [ mu_roots[np.where(roots == rt)[0]][0] for rt in internal_path_roots ]
-    internal_path_root_locations = np.array(internal_path_root_locations)
-    internal_locations = internal_path_root_locations + np.matmul(np.matmul(internal_data[1], CMinv),loc - np.matmul(np.transpose(R),mu_roots))
+    # internal_path_root_locations = [ mu_roots[np.where(roots == rt)[0]][0] for rt in internal_path_roots ]
+    # internal_path_root_locations = np.array(internal_path_root_locations)
+    # internal_locations = internal_path_root_locations + np.matmul(np.matmul(internal_data[1], CMinv),loc - np.matmul(np.transpose(R),mu_roots))
                             
-    internal_loc_variance = [] 
-    for i,nd in enumerate(internal_data[0]) : 
-        t_int = ts.tables.nodes.time[nd]
-        s_int = np.array([internal_data[1][i]])
-        print(s_int.shape)
-        var_int = t_int - np.matmul(np.matmul(s_int,CMinv),np.transpose(s_int)) 
-        # + (1 - np.sum(np.matmul(s_int,CMinv) ) )**2/(np.sum(CMinv))
-        internal_loc_variance += [sigma*var_int]
+    # internal_loc_variance = [] 
+    # for i,nd in enumerate(internal_data[0]) : 
+    #     t_int = ts.tables.nodes.time[nd]
+    #     s_int = np.array([internal_data[1][i]])
+    #     print(s_int.shape)
+    #     var_int = t_int - np.matmul(np.matmul(s_int,CMinv),np.transpose(s_int)) 
+    #     # + (1 - np.sum(np.matmul(s_int,CMinv) ) )**2/(np.sum(CMinv))
+    #     internal_loc_variance += [sigma*var_int]
         
-    return mu_roots, sigma, internal_locations, internal_loc_variance
+    return mu_roots, sigma
 
     
     
