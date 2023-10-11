@@ -143,7 +143,7 @@ def merge_unnecessary_roots(ts):
         pts = children[child]
         if len(pts) > 1:
             for pt in pts:
-                if len(edge_table.child[np.where(edge_table.parent == pt)[0]]) > 1:
+                if len(np.unique(edge_table.child[np.where(edge_table.parent == pt)[0]])) > 1:
                     print(pt, "has multiple children! Merge roots with caution.")
                 parent[np.where(ts.tables.edges.parent == pt)[0]] = pts[0]
     edge_table.parent = parent 

@@ -268,7 +268,8 @@ def calc_minimal_covariance_matrix(ts, internal_nodes=[], verbose=False):
                     parent2_ind += [ len(cov_mat) ]
                     cov_mat = np.hstack(  (cov_mat, cov_mat[:,path_ind_to_be_duplicated[0]].reshape(cov_mat.shape[0],1) )) #Duplicate the column
                     cov_mat = np.vstack(  (cov_mat, cov_mat[path_ind_to_be_duplicated[0],:].reshape(1,cov_mat.shape[1]) )) #Duplicate the row
-                    shared_time = np.hstack(  (shared_time, shared_time[:,path_ind_to_be_duplicated[0]].reshape(shared_time.shape[0],1) )) #Duplicate the column
+                    if len(internal_nodes) != 0:
+                        shared_time = np.hstack(  (shared_time, shared_time[:,path_ind_to_be_duplicated[0]].reshape(shared_time.shape[0],1) )) #Duplicate the column
                     
                 elif i%2 == 0: 
                     paths[path].append(parent1)
@@ -290,6 +291,7 @@ def calc_minimal_covariance_matrix(ts, internal_nodes=[], verbose=False):
                     int_nodes_update += internal_indices[i]
                 shared_time[ np.ix_( int_nodes_update, parent1_ind + parent2_ind) ] += edge_len 
         else : 
+            print(node, parent_nodes)
             raise RuntimeError("Nodes has more than 2 parents")
                 
     if len(internal_nodes) != 0:
