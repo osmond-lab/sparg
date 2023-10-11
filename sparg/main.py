@@ -158,7 +158,7 @@ def calc_covariance_matrix(ts, internal_nodes=[], verbose=False):
         return cov_mat, paths, shared_time, internal_paths
     else:
         return cov_mat, paths
-
+    
 def calc_minimal_covariance_matrix(ts, internal_nodes=[], verbose=False):
     """Calculates a covariance matrix between the minimal number of paths in the the ARG. Should always produce an invertible matrix 
 
@@ -205,12 +205,13 @@ def calc_minimal_covariance_matrix(ts, internal_nodes=[], verbose=False):
     if len(internal_nodes) != 0:
         int_nodes = {nd:i for i,nd in enumerate(internal_nodes)}
         internal_paths = [ [nd] for nd in internal_nodes ]
-    shared_time = np.zeros(shape=(len(int_nodes),ts.num_samples)) 
-    internal_indices = defaultdict(list) #For each path, identifies internal nodes that are using that path for shared times.
+        shared_time = np.zeros(shape=(len(int_nodes),ts.num_samples))
+        internal_indices = defaultdict(list) #For each path, identifies internal nodes that are using that path for shared times.
     if verbose:
         nodes = tqdm(ts.nodes(order="timeasc"))
     else:
         nodes = ts.nodes(order="timeasc")
+    
     for node in nodes:
         
         path_ind = indices[node.id]
@@ -219,11 +220,9 @@ def calc_minimal_covariance_matrix(ts, internal_nodes=[], verbose=False):
         if len(internal_nodes) != 0: 
             if node.id in int_nodes: 
                 internal_indices[path_ind[0]] += [int_nodes[node.id]]   
-                
+
         npaths = len(path_ind)
         nparent = len(parent_nodes)
-        
-        
         
         path_ind_unique, path_ind_count = np.unique(path_ind, return_counts=True)
         path_ind_to_be_duplicated = []
@@ -237,9 +236,10 @@ def calc_minimal_covariance_matrix(ts, internal_nodes=[], verbose=False):
             parent = parent_nodes[0]
             for path in path_ind:
                 paths[path].append(parent)
-                for internal_path_ind in internal_indices[path]: 
-                    internal_paths[internal_path_ind] += [parent]
-            
+                if len(internal_nodes) != 0:
+                    for internal_path_ind in internal_indices[path]: 
+                        internal_paths[internal_path_ind] += [parent]
+
             edge_len = ts.node(parent_nodes[0]).time - node.time
             cov_mat[ np.ix_( path_ind, path_ind ) ] += edge_len
             indices[parent] += path_ind 
@@ -252,11 +252,11 @@ def calc_minimal_covariance_matrix(ts, internal_nodes=[], verbose=False):
                 
                 
         elif nparent == 2 : 
+
             parent1 = parent_nodes[0]
             parent1_ind = []
             parent2 = parent_nodes[1] 
             parent2_ind = [] 
-            
             
             for (i,path) in enumerate(path_ind):
             
@@ -268,6 +268,8 @@ def calc_minimal_covariance_matrix(ts, internal_nodes=[], verbose=False):
                     parent2_ind += [ len(cov_mat) ]
                     cov_mat = np.hstack(  (cov_mat, cov_mat[:,path_ind_to_be_duplicated[0]].reshape(cov_mat.shape[0],1) )) #Duplicate the column
                     cov_mat = np.vstack(  (cov_mat, cov_mat[path_ind_to_be_duplicated[0],:].reshape(1,cov_mat.shape[1]) )) #Duplicate the row
+                    if len(internal_nodes) != 0:
+                        shared_time = np.hstack(  (shared_time, shared_time[:,path_ind_to_be_duplicated[0]].reshape(shared_time.shape[0],1) )) #Duplicate the column
                     
                 elif i%2 == 0: 
                     paths[path].append(parent1)
@@ -289,13 +291,13 @@ def calc_minimal_covariance_matrix(ts, internal_nodes=[], verbose=False):
                     int_nodes_update += internal_indices[i]
                 shared_time[ np.ix_( int_nodes_update, parent1_ind + parent2_ind) ] += edge_len 
         else : 
+            print(node, parent_nodes)
             raise RuntimeError("Nodes has more than 2 parents")
                 
     if len(internal_nodes) != 0:
         return cov_mat, paths, shared_time, internal_paths
     else:
         return cov_mat, paths
-
 
 
 def expand_locations(locations_of_individuals, ts, paths):
@@ -385,7 +387,7 @@ def locate_roots(inverted_cov_mat, roots_array, locations_of_path_starts):
         return np.array(rre_form.col(range(-locations_of_path_starts.shape[1],0)), dtype=np.float64)
     
 
-def estimate_spatial_parameters(ts, verbose=False, record_to="", locations_of_individuals={}, return_ancestral_node_positions=[], n_r='Sample', dimensions=2):
+def estimate_spatial_parameters(ts, verbose=False, record_to="", locations_of_individuals={}, return_ancestral_node_positions=[], n_r=False, dimensions=2):
     """Calculates maximum likelihood dispersal rate and the locations of ancestral nodes.
 
     Parameters
@@ -400,7 +402,6 @@ def estimate_spatial_parameters(ts, verbose=False, record_to="", locations_of_in
     return_ancestral_node_positions (optional) : boolean
         Option to calculate the position of internal nodes. This can be a computationally costly calculation
         so can be bypasses if the user is only interested in dispersal rates and the covariance matrix.
-    n_r : The denominator for estimating sample. Values it can take are 'Rank', 'Sample', 'Root'
 
     Returns
     -------
@@ -469,16 +470,10 @@ def estimate_spatial_parameters(ts, verbose=False, record_to="", locations_of_in
     # calculate dispersal rate
     # this is the uncorrected dispersal rate. (in the future we may want to change this to the corrected version which takes into account the number of roots: -len(roots))
     sample_locs_to_root_locs = locations_of_path_starts - root_locations_vector
-    if n_r == 'Root':
+    if n_r:
         sigma = np.matmul(np.matmul(np.transpose(sample_locs_to_root_locs), inverted_cov_mat), sample_locs_to_root_locs)/(ts.num_samples-len(roots))
-    elif n_r == 'Sample':
+    else:
         sigma = np.matmul(np.matmul(np.transpose(sample_locs_to_root_locs), inverted_cov_mat), sample_locs_to_root_locs)/(ts.num_samples)
-    elif n_r == 'Rank':
-        sigma = np.matmul(np.matmul(np.transpose(sample_locs_to_root_locs), inverted_cov_mat), sample_locs_to_root_locs)/(np.linalg.matrix_rank(cov_mat) )
-    else: 
-        raise RuntimeError('The value for n_r is invalid. The valid values are Rank, Sample or Root')
-        
-        
     if verbose:
         print(f"Estimated dispersal rate - Section Elapsed Time: {time.time()-section_start_time} - Total Elapsed Time: {time.time()-total_start_time}")
     if record_to:
@@ -523,7 +518,7 @@ def estimate_spatial_parameters(ts, verbose=False, record_to="", locations_of_in
         log_file.close()
     return sigma, cov_mat, paths
 
-def new_estimate_spatial_parameters(ts, minimal = True, fisher_info = False ,verbose=False, record_to="", locations_of_individuals={}, return_ancestral_node_positions=[], n_r='Sample', dimensions=2):
+def estimate_minimal_spatial_parameters(ts, verbose=False, record_to="", locations_of_individuals={}, return_ancestral_node_positions=[], n_r=False, dimensions=2):
     """Calculates maximum likelihood dispersal rate and the locations of ancestral nodes.
 
     Parameters
@@ -538,7 +533,6 @@ def new_estimate_spatial_parameters(ts, minimal = True, fisher_info = False ,ver
     return_ancestral_node_positions (optional) : boolean
         Option to calculate the position of internal nodes. This can be a computationally costly calculation
         so can be bypasses if the user is only interested in dispersal rates and the covariance matrix.
-    n_r : The denominator for estimating sample. Values it can take are 'Rank', 'Sample', 'Root'
 
     Returns
     -------
@@ -558,8 +552,7 @@ def new_estimate_spatial_parameters(ts, minimal = True, fisher_info = False ,ver
         log_file = open(record_to + "/log.txt", "w")
     
     section_start_time = time.time()
-    if locations_of_individuals == {}: 
-        print("Enetr")# if user doesn't provide a separate locations dictionary, builds one
+    if locations_of_individuals == {}:  # if user doesn't provide a separate locations dictionary, builds one
         locations_of_individuals = get_tskit_locations(ts=ts, dimensions=dimensions)
     return_ancestral_node_positions = [x for x in return_ancestral_node_positions if x <= ts.node(ts.num_nodes-1).id]
     if verbose:
@@ -569,15 +562,9 @@ def new_estimate_spatial_parameters(ts, minimal = True, fisher_info = False ,ver
 
     section_start_time = time.time()
     if len(return_ancestral_node_positions)>0:
-        if minimal == False: 
-            cov_mat, paths, node_shared_times, node_paths = calc_covariance_matrix(ts=ts, internal_nodes=return_ancestral_node_positions, verbose=verbose)
-        else : 
-            cov_mat, paths, node_shared_times, node_paths = calc_minimal_covariance_matrix(ts=ts, internal_nodes=return_ancestral_node_positions, verbose=verbose)
+        cov_mat, paths, node_shared_times, node_paths = calc_minimal_covariance_matrix(ts=ts, internal_nodes=return_ancestral_node_positions, verbose=verbose)
     else:
-        if minimal == False: 
-            cov_mat, paths = calc_covariance_matrix(ts=ts, verbose=verbose)
-        else : 
-            cov_mat, paths = calc_minimal_covariance_matrix(ts=ts, verbose=verbose)
+        cov_mat, paths = calc_minimal_covariance_matrix(ts=ts, verbose=verbose)
     if verbose:
         print(f"Calculated covariance matrix - Section Elapsed Time: {time.time()-section_start_time} - Total Elapsed Time: {time.time()-total_start_time}")
     if record_to:
@@ -614,21 +601,10 @@ def new_estimate_spatial_parameters(ts, minimal = True, fisher_info = False ,ver
     # calculate dispersal rate
     # this is the uncorrected dispersal rate. (in the future we may want to change this to the corrected version which takes into account the number of roots: -len(roots))
     sample_locs_to_root_locs = locations_of_path_starts - root_locations_vector
-    if n_r == 'Root':
+    if n_r:
         sigma = np.matmul(np.matmul(np.transpose(sample_locs_to_root_locs), inverted_cov_mat), sample_locs_to_root_locs)/(ts.num_samples-len(roots))
-    elif n_r == 'Sample':
+    else:
         sigma = np.matmul(np.matmul(np.transpose(sample_locs_to_root_locs), inverted_cov_mat), sample_locs_to_root_locs)/(ts.num_samples)
-    elif n_r == 'Rank':
-        sigma = np.matmul(np.matmul(np.transpose(sample_locs_to_root_locs), inverted_cov_mat), sample_locs_to_root_locs)/(np.linalg.matrix_rank(cov_mat) )
-    else: 
-        raise RuntimeError('The value for n_r is invalid. The valid values are Rank, Sample or Root')
-    
-    if fisher_info:
-        if n_r == 'Rank':
-            FI = np.linalg.matrix_rank(cov_mat)/(2*sigma[0][0]**2) + np.matmul(np.matmul(np.transpose(root_locations_vector), inverted_cov_mat), root_locations_vector)[0][0]/sigma[0][0]**3
-        elif n_r == 'Sample':
-            FI = ts.num_samples/(2*sigma[0][0]**2) + np.matmul(np.matmul(np.transpose(root_locations_vector), inverted_cov_mat), root_locations_vector)[0][0]/sigma[0][0]**3
-        # print(FI)
     if verbose:
         print(f"Estimated dispersal rate - Section Elapsed Time: {time.time()-section_start_time} - Total Elapsed Time: {time.time()-total_start_time}")
     if record_to:
@@ -671,9 +647,4 @@ def new_estimate_spatial_parameters(ts, minimal = True, fisher_info = False ,ver
     
     if record_to:
         log_file.close()
-    
-    if fisher_info: 
-        return sigma, FI, cov_mat, paths
-    else:
-        return sigma, cov_mat, paths 
-
+    return sigma, cov_mat, paths
