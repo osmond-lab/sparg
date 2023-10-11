@@ -94,13 +94,13 @@ def MLE(S_inv, loc, rootind, n) :
         if int(A.shape[0]) in pivots: 
             raise TypeError("No Solutions")
         else: 
-            print("Unique Solution")
+            #print("Unique Solution")
             mu_list = np.array(rre_form.col(-1))
             mu_vect = np.matmul(np.transpose(D),mu_list)    
             sigma = np.matmul(np.matmul(np.transpose(loc - mu_vect), S_inv), (loc - mu_vect))/n
-            return mu_list, sigma[0][0]
+            return mu_list, sigma
     else: 
-        print("Multiple Solution", D, roots, null_space)
+        #print("Multiple Solution", D, roots, null_space)
         mu_particular = rre_form.col(-1)
         sigma_list = []
         
@@ -145,7 +145,7 @@ def MLE(S_inv, loc, rootind, n) :
 
 def ARG_estimate(ts): 
     CM, indices, rootind = calc_covariance_matrix(ts)  
-    print(CM)
+    #print(CM)
     S = list(ts.samples())
     loc = np.zeros((CM.shape[0],1))
     for i in S: 
