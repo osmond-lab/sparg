@@ -125,8 +125,8 @@ def remove_unattached_nodes(ts):
     critical_nodes = []
     for node in ts.nodes():
         if node.id in attached_nodes:
-            critical_nodes.append(node.id)
-    ts_final, maps = ts.simplify(samples=critical_nodes, map_nodes = True, keep_input_roots=False, keep_unary=False, update_sample_flags = False)
+            critical_nodes.append(node.id) #something in attached nodes that cannot be passed to simplify 
+    ts_final, maps = ts.simplify(samples=critical_nodes, map_nodes = True, keep_input_roots=False, keep_unary=False, update_sample_flags = False) #Subset might be better
     return ts_final, maps
 
 def merge_unnecessary_roots(ts):
@@ -152,6 +152,26 @@ def merge_unnecessary_roots(ts):
     return ts_new
 
 def remove_uninformative_nodes(ts, keep_young_nodes={}):
+    uniq_child_parent = np.unique(np.column_stack((ts.edges_child, ts.edges_parent)), axis=0) #Find unique parent-child pairs. 
+    nd, count = np.unique(uniq_child_parent[:, 1], return_counts=True) #For each child, count how many parents it has. 
+    coal_nodes = nd[count > 1] #Find parent who have more than 1 children.
+    recomb_nodes_first_id = np.where(ts.tables.nodes.flags==131072)[0][::2]
+    important_recomb_nodes = []
+    for node in recomb_nodes_first_id:
+        if node in uniq_child_parent[:,0]:# or (node in uniq_child_parent[:,1]):
+            if (node+1) in uniq_child_parent[:,0]:# or (node+1 in uniq_child_parent[:,1]):
+                #print(uniq_child_parent[np.where(uniq_child_parent[:,0]==348)[0],:])
+                important_recomb_nodes.append(node)
+                important_recomb_nodes.append(node+1)
+    max_time = max(ts.tables.nodes[nd_id].time for nd_id in np.union1d(ts.edges_child, ts.edges_parent) )
+    roots = np.where(ts.tables.nodes.time == max_time)[0]
+    critical_nodes = list(np.unique( list(ts.samples()) + list(np.unique(important_recomb_nodes)) + list(np.unique(coal_nodes)) + list(np.unique(roots))))
+    if len(keep_young_nodes) > 0:
+        critical_nodes = list(np.unique(critical_nodes + list(np.where((ts.tables.nodes.time<=keep_young_nodes["below"]) & (ts.tables.nodes.time%keep_young_nodes["step"]==0))[0])))
+    ts_final, maps = ts.simplify(samples=critical_nodes, map_nodes = True, keep_input_roots=False, keep_unary=False, update_sample_flags = False)
+    return ts_final, maps 
+
+def old_remove_uninformative_nodes(ts, keep_young_nodes={}):
     uniq_child_parent = np.unique(np.column_stack((ts.edges_child, ts.edges_parent)), axis=0) #Find unique parent-child pairs. 
     nd, count = np.unique(uniq_child_parent[:, 1], return_counts=True) #For each child, count how many parents it has. 
     coal_nodes = nd[count > 1] #Find parent who have more than 1 children.

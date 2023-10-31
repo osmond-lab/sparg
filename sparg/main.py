@@ -223,12 +223,7 @@ def calc_minimal_covariance_matrix(ts, internal_nodes=[], verbose=False):
 
         npaths = len(path_ind)
         nparent = len(parent_nodes)
-        
-        path_ind_unique, path_ind_count = np.unique(path_ind, return_counts=True)
-        path_ind_to_be_duplicated = []
-        if len(path_ind) == len(path_ind_unique) or len(path_ind) < nparent:
-            path_ind_to_be_duplicated += [path_ind[0]]
-        
+           
         
         if nparent == 0 : 
             continue
@@ -252,6 +247,11 @@ def calc_minimal_covariance_matrix(ts, internal_nodes=[], verbose=False):
                 
                 
         elif nparent == 2 : 
+            
+            # path_ind_unique, path_ind_count = np.unique(path_ind, return_counts=True)
+            # path_ind_to_be_duplicated = []
+            # if len(path_ind) == len(path_ind_unique) or len(path_ind) < nparent:
+            #     path_ind_to_be_duplicated += [path_ind[0]]                
 
             parent1 = parent_nodes[0]
             parent1_ind = []
@@ -260,16 +260,16 @@ def calc_minimal_covariance_matrix(ts, internal_nodes=[], verbose=False):
             
             for (i,path) in enumerate(path_ind):
             
-                if path in path_ind_to_be_duplicated:
+                if i == 0:
                     paths[path].append(parent1)
                     parent1_ind += [ path ]
                     paths.append(paths[path][:])
                     paths[-1][-1] = parent2
                     parent2_ind += [ len(cov_mat) ]
-                    cov_mat = np.hstack(  (cov_mat, cov_mat[:,path_ind_to_be_duplicated[0]].reshape(cov_mat.shape[0],1) )) #Duplicate the column
-                    cov_mat = np.vstack(  (cov_mat, cov_mat[path_ind_to_be_duplicated[0],:].reshape(1,cov_mat.shape[1]) )) #Duplicate the row
+                    cov_mat = np.hstack(  (cov_mat, cov_mat[:,path].reshape(cov_mat.shape[0],1) )) #Duplicate the column
+                    cov_mat = np.vstack(  (cov_mat, cov_mat[path,:].reshape(1,cov_mat.shape[1]) )) #Duplicate the row
                     if len(internal_nodes) != 0:
-                        shared_time = np.hstack(  (shared_time, shared_time[:,path_ind_to_be_duplicated[0]].reshape(shared_time.shape[0],1) )) #Duplicate the column
+                        shared_time = np.hstack(  (shared_time, shared_time[:,path].reshape(shared_time.shape[0],1) )) #Duplicate the column
                     
                 elif i%2 == 0: 
                     paths[path].append(parent1)
@@ -479,7 +479,7 @@ def estimate_spatial_parameters(ts, verbose=False, record_to="", locations_of_in
     if record_to:
         log_file.write(f"Estimated dispersal rate - Section Elapsed Time: {time.time()-section_start_time} - Total Elapsed Time: {time.time()-total_start_time}\n")
         np.savetxt(record_to + "/dispersal_rate.csv", sigma, delimiter=",")
-
+    
     # calculate locations of nodes
     if len(return_ancestral_node_positions)>0:
         
@@ -610,7 +610,10 @@ def estimate_minimal_spatial_parameters(ts, verbose=False, record_to="", locatio
     if record_to:
         log_file.write(f"Estimated dispersal rate - Section Elapsed Time: {time.time()-section_start_time} - Total Elapsed Time: {time.time()-total_start_time}\n")
         np.savetxt(record_to + "/dispersal_rate.csv", sigma, delimiter=",")
-
+    
+    FI1 = ts.num_samples/(2*sigma[0][0]**2) 
+    FI2 = np.matmul(np.matmul(np.transpose(root_locations_vector), inverted_cov_mat), root_locations_vector)[0][0]/sigma[0][0]**3
+    
     # calculate locations of nodes
     if len(return_ancestral_node_positions)>0:
         
@@ -643,8 +646,8 @@ def estimate_minimal_spatial_parameters(ts, verbose=False, record_to="", locatio
                 for node in locations_of_nodes:
                     f.write(f"{node} {locations_of_nodes[node]} {corrected_variances_in_node_locations[node]}\n")
             log_file.close()
-        return sigma, cov_mat, paths, locations_of_nodes, corrected_variances_in_node_locations
+        return sigma, cov_mat, paths, locations_of_nodes, corrected_variances_in_node_locations, node_shared_times, node_paths, inverted_cov_mat
     
     if record_to:
         log_file.close()
-    return sigma, cov_mat, paths
+    return sigma, cov_mat, paths, FI1, FI2
