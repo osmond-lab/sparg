@@ -2,6 +2,7 @@ import numpy as np
 import networkx as nx
 from collections import defaultdict
 from itertools import chain
+from tqdm import tqdm
 
 
 def ts_to_nx(ts, connect_recombination_nodes=False, recomb_nodes=[]):
@@ -27,7 +28,7 @@ def ts_to_nx(ts, connect_recombination_nodes=False, recomb_nodes=[]):
     return nx_graph
 
 
-def identify_unique_paths(ts):
+def identify_unique_paths(ts, samples=[], verbose=False):
     """
     Finds all of the paths within the incomplete ARG, stored as a tskit tree sequence
     
@@ -42,7 +43,11 @@ def identify_unique_paths(ts):
     # so this should handle that.
     roots = [i.id for i in list(ts.nodes()) if i.id not in list(ts.tables.edges.child)]
     all_paths = []
-    for sample in ts.samples():
+    if len(samples) == 0:
+        samples = ts.samples()
+    if verbose:
+        samples = tqdm(samples)
+    for sample in samples:
         for root in roots:
             paths = nx.all_simple_paths(G, source=sample, target=root)
             all_paths.extend(paths)

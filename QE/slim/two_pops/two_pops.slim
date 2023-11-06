@@ -3,7 +3,7 @@ initialize() {
     defineConstant("SIGMA_disp", 0.25);
 	 defineConstant("rep",1);
     // defineConstant("fname", "slim_" + SIGMA_disp + "rep"+rep+ "sigma.trees");
-    defineConstant("fname", "trial.trees");
+    defineConstant("fname", "two_pops_distributed.trees");
     defineConstant("L",1e6);
     defineConstant("r",1e-8);
     defineConstant("R",2);
@@ -11,7 +11,7 @@ initialize() {
     defineConstant("K",1);
     defineConstant("W",100.0); 
     defineConstant("t",1000); 
-    defineConstant("N0",10000);
+    defineConstant("N0",8000);
 	 setSeed(rep); // set seed for repeatability
     initializeSLiMModelType("nonWF"); // non Wright Fisher
     initializeSLiMOptions(dimensionality="xy"); // two spatial dimensions
@@ -44,8 +44,11 @@ reproduction() {
     community.rescheduleScriptBlock(s1, start=t, end=t); //set up end of simulation
     sim.addSubpop("p1", N0); //initial popn size
     p1.setSpatialBounds(c(0, 0, W, W)); //set spatial plane
-    p1.individuals.x = sample(c(W/4, 3*W/4), N0, replace=T);
-    p1.individuals.y = W/2;
+    p1.individuals.setSpatialPosition(p1.pointUniform(N0)); // start with uniform distribution across range
+    starting_pops = sample(c(25, 75), N0, replace=T);
+    p1.individuals.x = rdunif(N0, starting_pops - 10, starting_pops + 10);
+    p1.individuals.y = rdunif(N0, 40, 60); //W/2 + rnorm(N0, 0, 5);
+    //catn(p1.individuals.x);
     //p1.individuals.setSpatialPosition(c(W/2,W/2));
 }
 

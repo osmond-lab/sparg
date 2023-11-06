@@ -115,7 +115,7 @@ def locate_loop_group_nodes(ARG):
         loop_group_nodes = [set(loop_list[0])]
     return loop_group_nodes
 
-def remove_unattached_nodes(ts):
+def remove_unattached_nodes_old(ts):
     ts_nx = ts_to_nx(ts=ts)
     sub_graphs = nx.connected_components(ts_nx.to_undirected())
     attached_nodes = []
@@ -128,6 +128,13 @@ def remove_unattached_nodes(ts):
             critical_nodes.append(node.id) #something in attached nodes that cannot be passed to simplify 
     ts_final, maps = ts.simplify(samples=critical_nodes, map_nodes = True, keep_input_roots=False, keep_unary=False, update_sample_flags = False) #Subset might be better
     return ts_final, maps
+
+def remove_unattached_nodes(ts):
+    edge_table = ts.tables.edges
+    connected_nodes = np.sort(np.unique(np.concatenate((edge_table.parent,edge_table.child))))
+    ts_final = ts.subset(nodes=connected_nodes)
+    return ts_final
+    
 
 def merge_unnecessary_roots(ts):
     ts_tables = ts.dump_tables()
@@ -148,12 +155,12 @@ def merge_unnecessary_roots(ts):
                 parent[np.where(ts.tables.edges.parent == pt)[0]] = pts[0]
     edge_table.parent = parent 
     ts_tables.sort() 
-    ts_new = ts_tables.tree_sequence() 
+    ts_new = remove_unattached_nodes(ts=ts_tables.tree_sequence())
     return ts_new
 
 def remove_uninformative_nodes(ts, keep_young_nodes={}):
     uniq_child_parent = np.unique(np.column_stack((ts.edges_child, ts.edges_parent)), axis=0) #Find unique parent-child pairs. 
-    nd, count = np.unique(uniq_child_parent[:, 1], return_counts=True) #For each child, count how many parents it has. 
+    nd, count = np.unique(uniq_child_parent[:, 1], return_counts=True) #For each parent, count how many children it has. 
     coal_nodes = nd[count > 1] #Find parent who have more than 1 children.
     recomb_nodes_first_id = np.where(ts.tables.nodes.flags==131072)[0][::2]
     important_recomb_nodes = []
