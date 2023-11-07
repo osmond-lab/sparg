@@ -518,7 +518,7 @@ def estimate_spatial_parameters(ts, verbose=False, record_to="", locations_of_in
         log_file.close()
     return sigma, cov_mat, paths
 
-def estimate_minimal_spatial_parameters(ts, verbose=False, record_to="", locations_of_individuals={}, return_ancestral_node_positions=[], n_r=False, dimensions=2):
+def estimate_minimal_spatial_parameters(ts, verbose=False, record_to="", locations_of_individuals={}, return_ancestral_node_positions=[], n_r=False, dimensions=2, for_fig=0):
     """Calculates maximum likelihood dispersal rate and the locations of ancestral nodes.
 
     Parameters
@@ -640,14 +640,22 @@ def estimate_minimal_spatial_parameters(ts, verbose=False, record_to="", locatio
             corrected_variances_in_node_locations[node] = (sigma*corrected_variance_scaling_factor)
         if verbose:
             print(f"Reconstructed ancestral locations - Section Elapsed Time: {time.time()-section_start_time} - Total Elapsed Time: {time.time()-total_start_time}")
-        if record_to:
+        if record_to: 
             log_file.write(f"Reconstructed ancestral locations - Section Elapsed Time: {time.time()-section_start_time} - Total Elapsed Time: {time.time()-total_start_time}\n")
             with open(record_to + "/locations_of_nodes.txt", "w") as f:
                 for node in locations_of_nodes:
                     f.write(f"{node} {locations_of_nodes[node]} {corrected_variances_in_node_locations[node]}\n")
             log_file.close()
-        return sigma, cov_mat, paths, locations_of_nodes, corrected_variances_in_node_locations, node_shared_times, node_paths, inverted_cov_mat
-    
+        if for_fig == 0: 
+            return sigma, cov_mat, paths, locations_of_nodes, corrected_variances_in_node_locations
+        elif for_fig == 2: 
+            return sigma, cov_mat, paths, locations_of_nodes, corrected_variances_in_node_locations, node_shared_times, node_paths, inverted_cov_mat
+        elif for_fig == 3: 
+            return sigma, cov_mat, paths, locations_of_nodes, corrected_variances_in_node_locations, FI1, FI2 
+        
     if record_to:
         log_file.close()
-    return sigma, cov_mat, paths, FI1, FI2
+    if for_fig == 0: 
+        return sigma, cov_mat, paths
+    elif for_fig ==1: 
+        return sigma, cov_mat, paths, FI1, FI2

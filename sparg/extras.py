@@ -235,3 +235,24 @@ def special_merge_roots(ts):
     ts_tables.sort() 
     ts_new = ts_tables.tree_sequence() 
     return ts_new
+    
+def average_dispersal_treewise(ts, locations_of_nodes):
+    branch_lengths = ts.tables.nodes.time[ts.tables.edges.parent] - ts.tables.nodes.time[ts.tables.edges.child]
+    child_locations = np.array(list( map(locations_of_nodes.get, ts.tables.edges.child) ))
+    parent_locations = np.array(list( map(locations_of_nodes.get, ts.tables.edges.parent) ))
+    branch_distances = parent_locations - child_locations 
+    ts_trees = ts.aslist()
+    dispersal_rate = []
+    average_dispersal_rate = []
+    for ts_tree in ts_trees:     
+        edge_ind = ts_tree.edge_array[ts_tree.edge_array>-1]
+        tree_branch_lengths = branch_lengths[edge_ind]
+        tree_branch_distances = branch_distances[edge_ind]
+        tree_dispersal_rate = [ np.matmul( np.transpose([tree_branch_distances[i]]),[tree_branch_distances[i]] )/tree_branch_lengths[i] for i in range(len(tree_branch_distances)) ]
+        tree_dispersal_rate = np.sum(np.array(tree_dispersal_rate), axis=0)/ts.num_samples   
+        dispersal_rate += [tree_dispersal_rate]
+        average_dispersal_rate += [ np.average(np.array(dispersal_rate), axis=0) ]
+    return dispersal_rate, average_dispersal_rate 
+
+
+
