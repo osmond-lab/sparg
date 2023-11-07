@@ -1,0 +1,6 @@
+Prepared input parameters - Section Elapsed Time: 0.0015523433685302734 - Total Elapsed Time: 0.0019490718841552734
+Calculated covariance matrix - Section Elapsed Time: 0.14604997634887695 - Total Elapsed Time: 0.14800691604614258
+Inverted covariance matrix - Section Elapsed Time: 0.02614593505859375 - Total Elapsed Time: 0.22338509559631348
+Created root locations vector - Section Elapsed Time: 0.0063381195068359375 - Total Elapsed Time: 0.32805609703063965
+Estimated dispersal rate - Section Elapsed Time: 6.985664367675781e-05 - Total Elapsed Time: 0.32813119888305664
+Reconstructed ancestral locations - Section Elapsed Time: 0.02126598358154297 - Total Elapsed Time: 0.34993410110473633

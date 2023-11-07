@@ -1,16 +1,16 @@
 //adapted from https://pyslim.readthedocs.io/en/latest/vignette_space.html
 initialize() {
-    defineConstant("SIGMA_disp", 0.25);
-	 defineConstant("rep",1);
+    defineConstant("SIGMA_disp", 0.4);
+	 defineConstant("rep",12);
     // defineConstant("fname", "slim_" + SIGMA_disp + "rep"+rep+ "sigma.trees");
-    defineConstant("fname", "trial.trees");
+    defineConstant("fname", "trial_disp0.1_2.trees");
     defineConstant("L",1e6);
     defineConstant("r",1e-8);
     defineConstant("R",2);
     defineConstant("SIGMA_int",1);
     defineConstant("K",1);
     defineConstant("W",100.0); 
-    defineConstant("t",1000); 
+    defineConstant("t",50000); 
     defineConstant("N0",10000);
 	 setSeed(rep); // set seed for repeatability
     initializeSLiMModelType("nonWF"); // non Wright Fisher
@@ -49,7 +49,7 @@ reproduction() {
 }
 
 early() {
-    catn(community.tick); 
+    //catn(community.tick); 
     
     // survival probabilities
     p1.fitnessScaling = 1;
@@ -58,7 +58,7 @@ early() {
 }
 
 late() {
-    catn(p1.individualCount);
+    //catn(p1.individualCount);
     i1.evaluate(p1); //calculate interactions
     sim.treeSeqRememberIndividuals(p1.individuals, permanent=F); //remember individuals only if ancestors of final population
 }

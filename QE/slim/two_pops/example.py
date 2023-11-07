@@ -45,7 +45,7 @@ for i,path in enumerate(unique_paths):
             if node not in from_nine_nodes:
                 from_nine_nodes.append(node)
 
-dispersal_rate, cov_mat, paths, locations_of_nodes, variances_in_node_locations = sparg.estimate_spatial_parameters(ts=ts_filtered, record_to="test_out", return_ancestral_node_positions=from_nine_nodes)
+dispersal_rate, cov_mat, paths, locations_of_nodes, variances_in_node_locations = sparg.estimate_minimal_spatial_parameters(ts=ts_filtered, record_to="test_out", return_ancestral_node_positions=from_nine_nodes)
 
 
 for i,path in enumerate(unique_paths):
