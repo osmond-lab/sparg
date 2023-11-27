@@ -659,3 +659,5 @@ def estimate_minimal_spatial_parameters(ts, verbose=False, record_to="", locatio
         return sigma, cov_mat, paths
     elif for_fig ==1: 
         return sigma, cov_mat, paths, FI1, FI2
+    elif for_fig ==4: 
+    	return root_locations_vector, sigma
