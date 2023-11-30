@@ -4,5 +4,6 @@ __pycache__/
 QE/
 QE/slim/misc/
 QE/dispersal_025/
-figures/final/code/Fig2_coverage/args/orig_args/
+figures/final/code/Fig6_coverage/args/orig_args/
 figures/final/code/slim/
+sparg_final/
