@@ -17,6 +17,9 @@ def get_tskit_locations(ts, dimensions=2):
         This must be a tskit Tree Sequences with marked recombination nodes, as is outputted by
         msprime.sim_ancestry(..., record_full_arg=True). Must include locations within the
         individuals table.
+    dimensions (optional): int
+        The number of dimensions that you are interested in looking at. Often SLiM gives
+        a third dimension even though individuals can't move in that dimension. Default is 2.
 
     Returns
     -------
@@ -43,9 +46,11 @@ def calc_minimal_covariance_matrix(ts, internal_nodes=[], verbose=False):
         This must be a tskit Tree Sequences with marked recombination nodes, as is outputted by
         msprime.sim_ancestry(..., record_full_arg=True). The covariance matrix will not be
         correct if the recombination nodes are not marked.
-    internal_nodes : list 
+    internal_nodes (optional): list 
         A list of internal nodes for which you want the shared times. Default is an empty list,
         in which case no internal nodes will be calculated.
+    verbose (optional): boolean
+        Print checkpoints to screen as the function calculates. Default is False.
 
     Returns
     -------
@@ -154,17 +159,22 @@ def calc_minimal_covariance_matrix(ts, internal_nodes=[], verbose=False):
 def expand_locations(locations_of_individuals, ts, paths):
     """Converts individuals' locations to sample locations to start of paths locations.
 
-    This should handle if the samples are not organized first in the node table. Need to check.
+    TODO: This should handle if the samples are not organized first in the node table. Need to check.
 
     Parameters
     ----------
-    locations_of_individuals :
+    locations_of_individuals : dict
+        Geographic locations of each individual
     ts : tskit.trees.TreeSequence
-    paths :
+    paths : list
+        List of paths from samples to roots
 
     Returns
     -------
-    locations_of_path_starts
+    locations_of_path_starts : numpy.ndarray
+        Geographic locations of the tips of each path
+    locations_of_samples : numpy:ndarray
+        Geographic locations of each sample
     """
 
     locations_of_samples = {}
@@ -174,10 +184,10 @@ def expand_locations(locations_of_individuals, ts, paths):
     locations_of_path_starts = []
     for path in paths:
         locations_of_path_starts.append(locations_of_samples[path[0]])
-    locations_of_path_starts = np.array(locations_of_path_starts)#, dtype=np.float64)
+    locations_of_path_starts = np.array(locations_of_path_starts)
     if len(locations_of_path_starts.shape) == 1:
         raise RuntimeError("Path locations vector is missing number of columns. Cannot process.")
-    return locations_of_path_starts, locations_of_samples # I don't know why reshape is needed here
+    return locations_of_path_starts, locations_of_samples
 
 
 def build_roots_array(paths):
@@ -217,12 +227,17 @@ def locate_roots(inverted_cov_mat, roots_array, locations_of_path_starts):
 
     Parameters
     ----------
-    inverted_cov_mat :
-    roots_array :
-    locations_of_path_starts :
+    inverted_cov_mat : numpy.ndarray
+        Inverted shared time matrix between paths
+    roots_array : numpy.ndarray
+        Matrix that associates roots to specific paths
+    locations_of_path_starts : numpy.ndarray
+        Matrix that associates tip locations to specific paths
     
     Returns
     -------
+    np.ndarray
+        Locations of root associated with each path
     """
 
     A = np.matmul(np.transpose(roots_array),np.matmul(inverted_cov_mat, roots_array)) #Matrix of coefficients of the system of linear equations 
@@ -246,8 +261,10 @@ def simplify_with_recombination(ts, flag_recomb=False, keep_nodes=[]):
     Parameters
     ----------
     ts : tskit.TreeSequence
-    flag_recomb : bool
-        Whether to add msprime node flags
+    flag_recomb (optional) : bool
+        Whether to add msprime node flags. Default is False.
+    keep_nodes (optional) : list
+        List of node IDs that should be kept. Default is empty list, so ignored.
 
     Returns
     -------
@@ -272,7 +289,6 @@ def simplify_with_recombination(ts, flag_recomb=False, keep_nodes=[]):
         ts_tables.sort() 
         ts = ts_tables.tree_sequence()
     
-    #keep_nodes = np.unique(np.concatenate((np.where((ts.tables.nodes.time <= keep_nodes_below) & (ts.tables.nodes.time % keep_nodes_step == 0))[0], recomb_nodes)))
     keep_nodes = np.unique(np.concatenate((keep_nodes, recomb_nodes)))
     potentially_uninformative = np.intersect1d(child_node[np.where(parents_count!=0)[0]], parent_node[np.where(children_count==1)[0]])
     truly_uninformative = np.delete(potentially_uninformative, np.where(np.isin(potentially_uninformative, keep_nodes)))
@@ -309,12 +325,40 @@ def identify_all_nodes_above(ts, nodes):
     return np.sort(above_samples)
 
 def remove_unattached_nodes(ts):
+    """Removes any nodes that are not attached to any other nodes from the tree sequence
+    
+    Parameters
+    ----------
+    ts : tskit.TreeSequence
+
+    Returns
+    -------
+    ts_final : tskitTreeSequence
+        A tree sequence with unattached nodes removed
+    """
+
     edge_table = ts.tables.edges
     connected_nodes = np.sort(np.unique(np.concatenate((edge_table.parent,edge_table.child))))
     ts_final = ts.subset(nodes=connected_nodes)
     return ts_final
     
 def merge_unnecessary_roots(ts):
+    """Merges root node IDs that are referring to the same node
+
+    This commonly occurs as a result of decapitate(). Combines the two nodes into one and then
+    removes the unattached node that is no longer important. This does not merge all roots into
+    one, just those that are referring to the same root.
+
+    Parameters
+    ----------
+    ts : tskit.TreeSequence
+
+    Returns
+    -------
+    ts_new : tskitTreeSequence
+        A tree sequence with corresponding roots merged
+    """
+
     ts_tables = ts.dump_tables()
     edge_table = ts_tables.edges 
     parent = edge_table.parent
@@ -337,35 +381,79 @@ def merge_unnecessary_roots(ts):
     return ts_new
 
 def chop_arg(ts, time):
+    """Chops the tree sequence at a time in the past
+
+    Parameters
+    ----------
+    ts : tskit.TreeSequence
+    time : int
+        Chops at `time` generations in the past
+
+    Returns
+    -------
+    merged : tskitTreeSequence
+        A tree sequence that has been decapitated and subset
+    """
+
     decap = ts.decapitate(time)
     subset = decap.subset(nodes=np.where(decap.tables.nodes.time <= time)[0])
     merged = merge_unnecessary_roots(ts=subset)
     return merged
 
 def estimate_spatial_parameters(ts, locations_of_individuals={}, dimensions=2, verbose=False):
+    """
+
+    Parameters
+    ----------
+    ts : tskit.TreeSequence
+    locations_of_individuals (optional) : dictionary
+        The locations of individuals can be provided within the tskit Tree Sequence or as a separate
+        dictionary, where the key is the node ID and the value is a numpy.ndarray or list with the node's
+        location.
+    dimensions (optional): int
+        The number of dimensions that you are interested in looking at. Often SLiM gives
+        a third dimension even though individuals can't move in that dimension. Default is 2.
+    verbose (optional): boolean
+        Print checkpoints to screen as the function calculates. Default is False.
+
+    Returns
+    -------
+    sigma : numpy.ndarray
+        Dispersal rate matrix for n dimensions
+    cov_mat : numpy.ndarray
+        Shared time matrix between the paths in the tree sequence
+    paths : list
+        Paths used to calculate cov_mat, in order
+    inverted_cov_mat : numpy.ndarray
+        Inverted shared time matrix, used for calculating other parameters
+    FI1 : numpy.ndarray
+        Fisher information matrix
+    FI2 : numpy.ndarray
+        Fisher information matrix
+    sample_locs_to_root_locs : numpy.ndarray
+        Difference between the tip (sample) location and root location for every path
+    root_output : dict
+        Location of each root in the tree sequence
+    node_shared_times : numpy.ndarray
+        Shared time between a node path and the other paths (found in `paths`)
+    node_paths : list
+        List of node paths, one path per node
+    """
 
     total_start_time = time.time()
-    
     section_start_time = time.time()
     if locations_of_individuals == {}:  # if user doesn't provide a separate locations dictionary, builds one
         locations_of_individuals = get_tskit_locations(ts=ts, dimensions=dimensions)
     if verbose:
         print(f"Prepared input parameters - Section Elapsed Time: {time.time()-section_start_time} - Total Elapsed Time: {time.time()-total_start_time}")
-
     section_start_time = time.time()
     cov_mat, paths, node_shared_times, node_paths = calc_minimal_covariance_matrix(ts=ts, internal_nodes=range(ts.num_nodes), verbose=verbose)
-    #if return_node_positions:
-    #    cov_mat, paths, node_shared_times, node_paths = calc_minimal_covariance_matrix(ts=ts, internal_nodes=range(ts.num_nodes), verbose=verbose)
-    #else:
-    #    cov_mat, paths = calc_minimal_covariance_matrix(ts=ts, verbose=verbose)
     if verbose:
         print(f"Calculated covariance matrix - Section Elapsed Time: {time.time()-section_start_time} - Total Elapsed Time: {time.time()-total_start_time}")
-
     section_start_time = time.time()
     inverted_cov_mat = np.linalg.pinv(cov_mat)
     if verbose:
         print(f"Inverted covariance matrix - Section Elapsed Time: {time.time()-section_start_time} - Total Elapsed Time: {time.time()-total_start_time}")
-    
     section_start_time = time.time()
     locations_of_path_starts, locations_of_samples = expand_locations(locations_of_individuals=locations_of_individuals, ts=ts, paths=paths)
     roots_array, roots = build_roots_array(paths)
@@ -374,7 +462,6 @@ def estimate_spatial_parameters(ts, locations_of_individuals={}, dimensions=2, v
     root_locations_vector = np.matmul(roots_array, root_locations)
     if verbose:
         print(f"Created root locations vector - Section Elapsed Time: {time.time()-section_start_time} - Total Elapsed Time: {time.time()-total_start_time}")
-
     section_start_time = time.time()
     # calculate dispersal rate
     # this is the uncorrected dispersal rate. (in the future we may want to change this to the corrected version)
@@ -382,50 +469,49 @@ def estimate_spatial_parameters(ts, locations_of_individuals={}, dimensions=2, v
     sigma = np.matmul(np.matmul(np.transpose(sample_locs_to_root_locs), inverted_cov_mat), sample_locs_to_root_locs)/(ts.num_samples)
     if verbose:
         print(f"Estimated dispersal rate - Section Elapsed Time: {time.time()-section_start_time} - Total Elapsed Time: {time.time()-total_start_time}")
-
     FI1 = ts.num_samples/(2*sigma[0][0]**2) 
     FI2 = np.matmul(np.matmul(np.transpose(root_locations_vector), inverted_cov_mat), root_locations_vector)[0][0]/sigma[0][0]**3
-
     return sigma, cov_mat, paths, inverted_cov_mat, FI1, FI2, sample_locs_to_root_locs, root_output, node_shared_times, node_paths
-
-    if return_node_positions:
-        section_start_time = time.time()
-        node_path_roots = [path[-1] for path in node_paths]
-        node_path_root_locations = np.array([root_locations[np.where(roots == rt)[0]][0] for rt in node_path_roots])
-        matmul_prod = np.matmul(node_shared_times, inverted_cov_mat)
-        node_locations = node_path_root_locations + np.matmul(matmul_prod, sample_locs_to_root_locs)
-        locations_of_nodes = {}
-        for node in range(ts.num_nodes):
-            locations_of_nodes[node] = node_locations[node].tolist()
-        explained_variance = np.matmul(matmul_prod, np.transpose(node_shared_times))
-        ones = np.ones(inverted_cov_mat.shape[0])
-        unexplained_denominator = np.matmul(np.matmul(np.transpose(ones),inverted_cov_mat),ones)
-        corrected_variances_in_node_locations = {}
-        if verbose:
-            ranp = tqdm(range(ts.num_nodes))
-        else:
-            ranp = range(ts.num_nodes)
-        for i,node in enumerate(ranp):
-            node_specific_sharing = node_shared_times[i,:]
-            unexplained_numerator = (1-np.matmul(np.matmul(np.transpose(node_specific_sharing),inverted_cov_mat),ones))**2
-            corrected_variance_scaling_factor = (ts.max_root_time-ts.node(node).time)-explained_variance[i, i]+(unexplained_numerator/unexplained_denominator)
-            corrected_variances_in_node_locations[node] = (sigma*corrected_variance_scaling_factor)
-        if verbose:
-            print(f"Reconstructed ancestral locations - Section Elapsed Time: {time.time()-section_start_time} - Total Elapsed Time: {time.time()-total_start_time}")
-        return sigma, cov_mat, paths, inverted_cov_mat, FI1, FI2, locations_of_nodes, corrected_variances_in_node_locations, node_shared_times, node_paths
-    else:
-        return sigma, cov_mat, paths, inverted_cov_mat, FI1, FI2
     
 def ancestors(tree, u):
+    """Find all of the ancestors above a node for a tree
+
+    Taken directly from https://github.com/tskit-dev/tskit/issues/2706
+
+    Parameters
+    ----------
+    tree : tskit.Tree
+    u : int
+        The ID for the node of interest
+
+    Returns
+    -------
+    An iterator over the ancestors of u in this tree
     """
-    Returns an iterator over the ancestors of u in this tree.
-    """
+
     u = tree.parent(u)
     while u != -1:
          yield u
          u = tree.parent(u)
 
 def get_paths_for_nodes(ts, nodes):
+    """Identifies all of the paths that correspond to specific regions of the chromosome for a list of nodes.
+
+    These are the paths that are most interesting to track as they follow inherited
+    material. This will not identify non-genetic ancestors (for that, use networkx method).
+
+    Parameters
+    ----------
+    ts : tskit.TreeSequence
+    nodes : list
+        List of nodes for which you want paths above
+    
+    Returns
+    -------
+    paths : list
+        List of lists that are each a path from a node to the root
+    """
+
     paths = []
     for tree in ts.trees():
         for sample in nodes:
@@ -435,6 +521,24 @@ def get_paths_for_nodes(ts, nodes):
     return paths
 
 def get_paths_for_node(ts, node):
+    """
+    Identifies all of the paths that correspond to specific regions of the chromosome for a single node.
+
+    These are the paths that are most interesting to track as they follow inherited
+    material. This will not identify non-genetic ancestors (for that, use networkx method).
+
+    Parameters
+    ----------
+    ts : tskit.TreeSequence
+    nodes : int
+        ID of node for which you want paths above
+    
+    Returns
+    -------
+    paths : list
+        List of lists that are each a path from a node to the root
+    """
+
     just_node, map = ts.simplify(samples=[node], map_nodes=True, keep_input_roots=False, keep_unary=True, update_sample_flags=False)
     paths = []
     for tree in just_node.trees():
@@ -444,39 +548,89 @@ def get_paths_for_node(ts, node):
         paths.append(path)
     return paths
 
-def create_true_locations_dataframe(ts, nodes, dim=2):
+def create_ancestors_dataframe(ts, samples, timestep=1, include_locations=False):
+    """Creates a pandas.DataFrame with each row corresponding to an ancestor of a sample
+
+    Each ancestor is at a specific time in the past and corresponds to a region of the chromosome.
+
+    TODO: Test in cases where include_locations=True, but there aren't locations in the TreeSequence
+    TODO: Check what happens when a non-sample node is passed into samples list
+
+    Parameters
+    ----------
+    ts : tskit.TreeSequence
+    samples : list
+        List of sample node IDs
+    timestep : int
+        Determines how often ancestors are measured. 
+    include_locations : boolean
+        Whether to include columns for the true ancestor locations. Default is False.
+
+    Returns
+    -------
+    df : pandas.DataFrame
+        Each row in the DataFrame corrsponds with a sample's ancestor
+    """
+
     sample = []
     interval_left = []
     interval_right = []
     time = []
     location = []
-    for node in nodes:
+    for node in samples:
         just_node, map = ts.simplify(samples=[node], map_nodes=True, keep_input_roots=False, keep_unary=True, update_sample_flags=False)
         for tree in just_node.trees():
             path = [0] + list(ancestors(tree, 0))
             for i,n in enumerate(path):
                 path[i] = np.argwhere(map==n)[0][0]
             for i,n in enumerate(path):
-                sample.append(node)
-                interval_left.append(tree.interval.left)
-                interval_right.append(tree.interval.right)
-                time.append(ts.node(n).time)
-                indiv = ts.node(n).individual
-                if indiv != -1:
-                    location.append(ts.individual(indiv).location[:dim])
-                else:
-                    location.append(None)
+                node_time = ts.node(n).time
+                if node_time % timestep == 0:
+                    sample.append(node)
+                    interval_left.append(tree.interval.left)
+                    interval_right.append(tree.interval.right)
+                    time.append(node_time)
+                    indiv = ts.node(n).individual
+                    if indiv != -1:
+                        location.append(ts.individual(indiv).location)
+                    else:
+                        location.append(None)
     df = pd.DataFrame({
         "sample":sample,
         "interval_left":interval_left,
         "interval_right":interval_right,
         "time":time,
     })
-    locs = pd.DataFrame(location, columns=["true_location_"+str(d) for d in range(dim)])
-    df = pd.concat([df, locs], axis=1)
+    if include_locations:
+        locs = pd.DataFrame(location, columns=["true_location_"+str(d) for d in range(len(location[0]))])
+        df = pd.concat([df, locs], axis=1)
     return df
 
 def locate_ancestor(sample, chrom_pos, time, ts, spatial_parameters):
+    """Calculate the location of a sample's genetic ancestor at a specific time
+    and region of the chromosome
+
+    Parameters
+    ----------
+    sample : int
+        Sample node ID
+    chrom_pos : int
+        Basepair position along the chromosome
+    time : int
+        Time of the ancestor in generations in the past
+    ts : tskit.TreeSequence
+    spatial_parameters : tuple
+        Output from `estimate_spatial_parameters()`. This includes the dispersal rate matrix, paths,
+        root locations, etc.
+
+    Returns
+    -------
+    ancestor_location : numpy.ndarray
+        The geographic location of the ancestor in n dimensions
+    variance_in_ancestor_location : numpy.ndarray
+        The variance in the geographic location in n dimensions
+    """
+
     sigma = spatial_parameters[0]
     paths = spatial_parameters[2]
     inverted_cov_mat = spatial_parameters[3]
@@ -511,6 +665,26 @@ def locate_ancestor(sample, chrom_pos, time, ts, spatial_parameters):
     return ancestor_location, variance_in_ancestor_location
 
 def estimate_location(row, ts, spatial_parameters):
+    """Estimate the location of a sample's ancestor from a pandas.Series or dictionary
+
+    This is useful when applied to each row from the pandas.DataFrame output by
+    `create_ancestors_dataframe()`.
+
+    Parameters
+    ----------
+    row : pandas.Series or dict
+        Must have key: sample, interval_left, and time
+    ts : tskit.TreeSequence
+    spatial_parameters : tuple
+        Output from `estimate_spatial_parameters()`. This includes the dispersal rate matrix, paths,
+        root locations, etc.
+
+    Returns
+    -------
+    pandas.Series
+        Columns for estimated locations and variances around this estimate
+    """
+
     location, variance = locate_ancestor(sample=int(row["sample"]), chrom_pos=row["interval_left"], time=row["time"], ts=ts, spatial_parameters=spatial_parameters)
     output = []
     indices = []
