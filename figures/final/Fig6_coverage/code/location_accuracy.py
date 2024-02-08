@@ -102,7 +102,7 @@ for arg in glob.glob("orig_args/*"):
     cutoff = 40000
     samples = list(np.random.choice(ts.samples(), 50, replace=False))
     ts_sim, map_sim = ts.simplify(samples=samples, map_nodes=True, keep_input_roots=False, keep_unary=True, update_sample_flags=False)
-    ts_final, maps_final = simplify_with_recombination(ts=ts_sim, flag_recomb=True)
+    ts_final, maps_final = sparg.simplify_with_recombination(ts=ts_sim, flag_recomb=True)
     ts_chopped = chop_arg(ts=ts_final, time=cutoff)
 
     ts_chopped.dump(arg.replace("orig_args", "simplified_args"))
