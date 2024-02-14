@@ -202,6 +202,7 @@ def chop_arg(ts, time):
     merged = merge_unnecessary_roots(ts=subset)
     return merged
 
+
 class SpatialARG:
     """
 
@@ -358,7 +359,10 @@ class SpatialARG:
             nodes = tqdm(self.ts.nodes(order="timeasc"))
         else:
             nodes = self.ts.nodes(order="timeasc")
+        nodes_realized = np.concatenate((self.ts.tables.edges.parent,self.ts.tables.edges.child))
         for node in nodes:
+            if node.id not in nodes_realized :
+                continue
             path_ind = indices[node.id]
             parent_nodes = np.unique(edges.parent[np.where(edges.child == node.id)])
             if len(internal_nodes) != 0: 
@@ -646,9 +650,7 @@ def track_sample_ancestor_in_tree(row, spatial_arg):
 def estimate_locations_of_ancestors_in_dataframe_using_tree(df, spatial_arg):
     df = pd.concat([df, df.apply(track_sample_ancestor_in_tree, axis=1, spatial_arg=spatial_arg)], axis=1)
     return df
-
-
-
+ 
 
 #### Comparison with Wohns et al.
 
