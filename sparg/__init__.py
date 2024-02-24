@@ -8,6 +8,9 @@ import pandas as pd
 import msprime
 import random
 
+from tqdm.notebook import tqdm_notebook
+tqdm_notebook.pandas()
+
 
 #### USED WHEN PREPARING THE tskit.TreeSequence OUTPUT BY SLiM FOR SpatialARG
 
@@ -30,7 +33,8 @@ def find_ancestral_node_at_time(tree, u, time):
     u : int
         Node ID of the ancestral node at specified point
     """
-
+    if tree.time(u) == time:
+        return u
     u = tree.parent(u)
     while u != -1:
         node_time = tree.time(u)
@@ -48,22 +52,29 @@ def generate_random_ancestors_dataframe(ts, number_of_ancestors, include_locatio
     if seed != None:
         random.seed(seed)
     samples = []
+    genome_positions = []
     interval_left = []
     interval_right = []
     times = []
     location = []
     for n in range(number_of_ancestors):
-        sample = random.randint(0, ts.num_samples-1)
+        sample_time = -1
+        while (sample_time == -1) or (sample_time > cutoff):
+            sample = random.randint(0, ts.num_samples-1)
+            sample_time = ts.node(sample).time
         genome_pos = random.uniform(0, ts.sequence_length)
         if cutoff == -1:
-            time = random.randint(0, ts.max_root_time)
+            time = random.randint(sample_time, ts.max_root_time)
+        elif cutoff >= sample_time:
+            time = random.randint(ts.node(sample).time, cutoff)
         else:
-            time = random.randint(0, cutoff)
+            raise RuntimeError(f"Sample %s is older than the cutoff set. This shouldn't be possible...")
         tree = ts.at(genome_pos)
         ancestor = find_ancestral_node_at_time(tree, sample, time)
         samples.append(sample)
-        interval_left.append(tree.interval.left)
-        interval_right.append(tree.interval.right)
+        genome_positions.append(genome_pos)
+        #interval_left.append(tree.interval.left)
+        #interval_right.append(tree.interval.right)
         times.append(time)
         indiv = ts.node(ancestor).individual
         if indiv != -1:
@@ -72,8 +83,9 @@ def generate_random_ancestors_dataframe(ts, number_of_ancestors, include_locatio
             location.append([None for d in range(dimensions)])
     df = pd.DataFrame({
         "sample":samples,
-        "interval_left":interval_left,
-        "interval_right":interval_right,
+        "genome_position":genome_positions,
+        #"interval_left":interval_left,
+        #"interval_right":interval_right,
         "time":times,
     })
     if include_locations:
@@ -205,10 +217,11 @@ def chop_arg(ts, time):
 
 class SpatialARG:
     """
+    A tskit.TreeSequence with individuals' locations and its corresponding attributes needed to calculate
+    related spatial parameters, such as dispersal rate and location of ancestors.
 
     Attributes
     ----------
-
     ts
     locations_of_individuals
     paths_shared_time_matrix
@@ -577,8 +590,11 @@ def find_nearest_ancestral_nodes_at_time(tree, u, time):
         Node ID of the ancestral node below specified point
     """
 
+    
     v = u
     u = tree.parent(u)
+    if (u != -1) and (tree.time(v) == time):
+        return u, v
     while u != -1:
         if tree.time(u) >= time:
             return u, v
@@ -586,7 +602,32 @@ def find_nearest_ancestral_nodes_at_time(tree, u, time):
         u = tree.parent(u)
     return None, v
 
-def track_sample_ancestor(row, spatial_arg, label=""):
+
+
+def estimate_locations_of_ancestors_in_dataframe_using_arg(df, spatial_arg):
+    """
+    """
+    
+    df = pd.concat([df, df.progress_apply(track_sample_ancestor, axis=1, label="arg", spatial_arg=spatial_arg)], axis=1)
+    return df
+
+
+ 
+def get_window_bounds(genome_pos, spatial_arg, window_size):
+    num_trees = spatial_arg.ts.num_trees
+    center = spatial_arg.ts.at(genome_pos).index
+    if center - window_size > 0:
+        left = spatial_arg.ts.at_index(center-window_size).interval.left
+    else:
+        left = spatial_arg.ts.at_index(0).interval.left
+    if center + window_size < num_trees-1:
+        right = spatial_arg.ts.at_index(center+window_size).interval.right
+    else:
+        right = spatial_arg.ts.at_index(num_trees-1).interval.right
+    return left, right #pd.Series({"window_"+str(num_neighbors)+"_left":window_left, "window_"+str(num_neighbors)+"_right":window_right})
+
+
+def track_sample_ancestor(row, label="", spatial_arg=""):
     """Estimate the location of a sample's ancestor from a pandas.Series or dictionary
 
     This is useful when applied to each row from the pandas.DataFrame output by
@@ -596,10 +637,7 @@ def track_sample_ancestor(row, spatial_arg, label=""):
     ----------
     row : pandas.Series or dict
         Must have key: sample, interval_left, and time
-    ts : tskit.TreeSequence
-    spatial_parameters : tuple
-        Output from `estimate_spatial_parameters()`. This includes the dispersal rate matrix, paths,
-        root locations, etc.
+    label :
 
     Returns
     -------
@@ -607,20 +645,26 @@ def track_sample_ancestor(row, spatial_arg, label=""):
         Columns for estimated locations and variances around this estimate
     """
 
-    above, below = find_nearest_ancestral_nodes_at_time(tree=spatial_arg.ts.at(row["interval_left"]), u=int(row["sample"]), time=row["time"])
-    ancestor_specific_sharing = spatial_arg.node_paths_shared_times[above].copy()
-    root_location = spatial_arg.root_locations[spatial_arg.node_paths[above][-1]]
-    additional_time = spatial_arg.ts.node(above).time - row["time"]
-    for i,path in enumerate(spatial_arg.paths):
+    if spatial_arg != "":
+        arg = spatial_arg
+    elif "arg" in row:
+        arg = row["arg"]
+    else:
+        raise RuntimeError("No ARG provided.")
+    above, below = find_nearest_ancestral_nodes_at_time(tree=arg.ts.at(row["genome_position"]), u=int(row["sample"]), time=row["time"])
+    ancestor_specific_sharing = arg.node_paths_shared_times[above].copy()
+    root_location = arg.root_locations[arg.node_paths[above][-1]]
+    additional_time = arg.ts.node(above).time - row["time"]
+    for i,path in enumerate(arg.paths):
         if below in path:
             ancestor_specific_sharing[i] += additional_time
     ancestor_location, variance_in_ancestor_location = estimate_location_and_variance(
-        sigma_squared=spatial_arg.dispersal_rate_matrix,
+        sigma_squared=arg.dispersal_rate_matrix,
         s_a=ancestor_specific_sharing,
-        inverted_cov_mat=spatial_arg.inverted_paths_shared_time_matrix,
-        sample_locs_to_root_locs=spatial_arg.path_dispersal_distances,
+        inverted_cov_mat=arg.inverted_paths_shared_time_matrix,
+        sample_locs_to_root_locs=arg.path_dispersal_distances,
         u_a=root_location,
-        t_a=spatial_arg.ts.max_root_time-row["time"]
+        t_a=arg.ts.max_root_time-row["time"]
     )
     output = []
     indices = []
@@ -633,24 +677,34 @@ def track_sample_ancestor(row, spatial_arg, label=""):
         indices.append(label + "variance_in_estimated_location_"+str(i))
     return pd.Series(output, index=indices)
 
-def estimate_locations_of_ancestors_in_dataframe_using_arg(df, spatial_arg):
-    """
-    """
-    
-    df = pd.concat([df, df.apply(track_sample_ancestor, axis=1, spatial_arg=spatial_arg, label="arg")], axis=1)
-    return df
-
-def track_sample_ancestor_in_tree(row, spatial_arg):
-    tree = spatial_arg.ts.keep_intervals(np.array([[row["interval_left"], row["interval_right"]]]), simplify=False).trim()
+def retrieve_arg_for_window(row, spatial_arg, use_theoretical_dispersal=False):
+    tree = spatial_arg.ts.keep_intervals(np.array([[row[0], row[1]]]), simplify=False).trim()
     tree = remove_unattached_nodes(ts=tree)
     spatial_tree = SpatialARG(ts=tree)
-    row["interval_left"] = 0
-    return track_sample_ancestor(row=row, spatial_arg=spatial_tree, label="tree")
+    if use_theoretical_dispersal:
+        spatial_tree.dispersal_rate_matrix = np.array([[0.25*0.25+0.5,0],[0,0.25*0.25+0.5]])
+    return pd.Series({"interval": row, "arg": spatial_tree})
 
-def estimate_locations_of_ancestors_in_dataframe_using_tree(df, spatial_arg):
-    df = pd.concat([df, df.apply(track_sample_ancestor_in_tree, axis=1, spatial_arg=spatial_arg)], axis=1)
+def estimate_locations_of_ancestors_in_dataframe_using_window(df, spatial_arg, window_size, use_theoretical_dispersal=False):
+    """
+    
+    Note: There may be a way to do this without applying to pd.DataFrame twice (caching?) but this
+    isn't too much of a concern for the relatively small pd.DataFrames that we are working with.
+    """
+    
+    intervals = df["genome_position"].progress_apply(get_window_bounds, spatial_arg=spatial_arg, window_size=window_size)
+    intervals.name = "interval"
+    with_windows = pd.concat([df, intervals], axis=1)
+    unique_args = intervals.drop_duplicates().progress_apply(
+        retrieve_arg_for_window,
+        spatial_arg=spatial_arg,
+        use_theoretical_dispersal=use_theoretical_dispersal
+    )
+    with_windows = pd.merge(with_windows, unique_args, on="interval", how="left")
+    with_windows["genome_position"] = with_windows["genome_position"] - with_windows["interval"].str[0]
+    df = pd.concat([df, with_windows.progress_apply(track_sample_ancestor, axis=1, label="window_"+str(window_size))], axis=1)
     return df
- 
+
 
 #### Comparison with Wohns et al.
 
@@ -690,10 +744,12 @@ def midpoint_locations(row, succinct_ts, node_locations, dimensions=2, label="mi
     """
     """
 
-    above, below = find_nearest_ancestral_nodes_at_time(tree=succinct_ts.at(row["interval_left"]), u=int(row["sample"]), time=row["time"])
+    above, below = find_nearest_ancestral_nodes_at_time(tree=succinct_ts.at(row["genome_position"]), u=int(row["sample"]), time=row["time"])
     ancestor_location = []
     if above == None:
         ancestor_location = node_locations[below][:dimensions]
+    elif below == None:
+        print(row)
     else:
         for d in range(dimensions):
             ancestor_location.append((row["time"]-succinct_ts.node(below).time)*((node_locations[below][d]-node_locations[above][d])/(succinct_ts.node(below).time-succinct_ts.node(above).time))+node_locations[below][d])
@@ -714,6 +770,77 @@ def estimate_locations_of_ancestors_in_dataframe_using_midpoint(df, spatial_arg,
     node_locations = calc_midpoint_node_locations(ts=ts, weighted=False)
     df = pd.concat([df, df.apply(midpoint_locations, axis=1, succinct_ts=ts, node_locations=node_locations)], axis=1)
     return df
+
+
+
+#### Two Pops
+
+def create_ancestors_dataframe(ts, samples, timestep=1, include_locations=False, dimensions=2):
+    """Creates a pandas.DataFrame with each row corresponding to an ancestor of a sample
+
+    Each ancestor is at a specific time in the past and corresponds to a region of the chromosome.
+
+    TODO: Test in cases where include_locations=True, but there aren't locations in the TreeSequence
+    TODO: Check what happens when a non-sample node is passed into samples list
+
+    Parameters
+    ----------
+    ts : tskit.TreeSequence
+    samples : list
+        List of sample node IDs
+    timestep (optional) : int
+        Determines how often ancestors are measured.
+    include_locations : boolean
+        Whether to include columns for the true ancestor locations. Default is False.
+    dimensions (optional) : int
+        Number of dimensions to include in reconstruction. This only matters is include_locations=True.
+        Default is 2.
+
+    Returns
+    -------
+    df : pandas.DataFrame
+        Each row in the DataFrame corresponds with a sample's ancestor
+    """
+
+    sample = []
+    genome_positions = []
+    interval_left = []
+    interval_right = []
+    time = []
+    location = []
+    for node in samples:
+        just_node, map = ts.simplify(samples=[node], map_nodes=True, keep_input_roots=False, keep_unary=True, update_sample_flags=False)
+        for tree in just_node.trees():
+            path = [0] + list(ancestors(tree, 0))
+            for i,n in enumerate(path):
+                path[i] = np.argwhere(map==n)[0][0]
+            for i,n in enumerate(path):
+                node_time = ts.node(n).time
+                if node_time % timestep == 0:
+                    sample.append(node)
+                    genome_positions.append((tree.interval.left+tree.interval.right)/2)
+                    #interval_left.append(tree.interval.left)
+                    #interval_right.append(tree.interval.right)
+                    time.append(node_time)
+                    indiv = ts.node(n).individual
+                    if indiv != -1:
+                        location.append(ts.individual(indiv).location[:dimensions])
+                    else:
+                        location.append([None for d in range(dimensions)])
+    df = pd.DataFrame({
+        "sample":sample,
+        "genome_position":genome_positions,
+        #"interval_left":interval_left,
+        #"interval_right":interval_right,
+        "time":time,
+    })
+    if include_locations:
+        locs = pd.DataFrame(location, columns=["true_location_"+str(d) for d in range(dimensions)])
+        df = pd.concat([df, locs], axis=1)
+    return df
+
+
+
 
 
 #### UNUSED?
@@ -775,66 +902,6 @@ def locate_nodes(ts, spatial_parameters):
         node_locations.append(pd.Series(output, index=indices))
     return pd.DataFrame(node_locations, columns=indices)
 
-def create_ancestors_dataframe(ts, samples, timestep=1, include_locations=False, dimensions=2):
-    """Creates a pandas.DataFrame with each row corresponding to an ancestor of a sample
-
-    Each ancestor is at a specific time in the past and corresponds to a region of the chromosome.
-
-    TODO: Test in cases where include_locations=True, but there aren't locations in the TreeSequence
-    TODO: Check what happens when a non-sample node is passed into samples list
-
-    Parameters
-    ----------
-    ts : tskit.TreeSequence
-    samples : list
-        List of sample node IDs
-    timestep (optional) : int
-        Determines how often ancestors are measured.
-    include_locations : boolean
-        Whether to include columns for the true ancestor locations. Default is False.
-    dimensions (optional) : int
-        Number of dimensions to include in reconstruction. This only matters is include_locations=True.
-        Default is 2.
-
-    Returns
-    -------
-    df : pandas.DataFrame
-        Each row in the DataFrame corresponds with a sample's ancestor
-    """
-
-    sample = []
-    interval_left = []
-    interval_right = []
-    time = []
-    location = []
-    for node in samples:
-        just_node, map = ts.simplify(samples=[node], map_nodes=True, keep_input_roots=False, keep_unary=True, update_sample_flags=False)
-        for tree in just_node.trees():
-            path = [0] + list(ancestors(tree, 0))
-            for i,n in enumerate(path):
-                path[i] = np.argwhere(map==n)[0][0]
-            for i,n in enumerate(path):
-                node_time = ts.node(n).time
-                if node_time % timestep == 0:
-                    sample.append(node)
-                    interval_left.append(tree.interval.left)
-                    interval_right.append(tree.interval.right)
-                    time.append(node_time)
-                    indiv = ts.node(n).individual
-                    if indiv != -1:
-                        location.append(ts.individual(indiv).location[:dimensions])
-                    else:
-                        location.append([None for d in range(dimensions)])
-    df = pd.DataFrame({
-        "sample":sample,
-        "interval_left":interval_left,
-        "interval_right":interval_right,
-        "time":time,
-    })
-    if include_locations:
-        locs = pd.DataFrame(location, columns=["true_location_"+str(d) for d in range(dimensions)])
-        df = pd.concat([df, locs], axis=1)
-    return 
 
 
 
@@ -912,3 +979,81 @@ def get_paths_for_node(ts, node):
             path[i] = np.argwhere(map==n)[0][0]
         paths.append(path)
     return paths
+
+
+
+def track_sample_ancestor_orig(row, spatial_arg, label=""):
+    """Estimate the location of a sample's ancestor from a pandas.Series or dictionary
+
+    This is useful when applied to each row from the pandas.DataFrame output by
+    `create_ancestors_dataframe()`.
+
+    Parameters
+    ----------
+    row : pandas.Series or dict
+        Must have key: sample, interval_left, and time
+    ts : tskit.TreeSequence
+    spatial_parameters : tuple
+        Output from `estimate_spatial_parameters()`. This includes the dispersal rate matrix, paths,
+        root locations, etc.
+
+    Returns
+    -------
+    pandas.Series
+        Columns for estimated locations and variances around this estimate
+    """
+
+    above, below = find_nearest_ancestral_nodes_at_time(tree=spatial_arg.ts.at(row["genome_position"]), u=int(row["sample"]), time=row["time"])
+    ancestor_specific_sharing = spatial_arg.node_paths_shared_times[above].copy()
+    root_location = spatial_arg.root_locations[spatial_arg.node_paths[above][-1]]
+    additional_time = spatial_arg.ts.node(above).time - row["time"]
+    for i,path in enumerate(spatial_arg.paths):
+        if below in path:
+            ancestor_specific_sharing[i] += additional_time
+    ancestor_location, variance_in_ancestor_location = estimate_location_and_variance(
+        sigma_squared=spatial_arg.dispersal_rate_matrix,
+        s_a=ancestor_specific_sharing,
+        inverted_cov_mat=spatial_arg.inverted_paths_shared_time_matrix,
+        sample_locs_to_root_locs=spatial_arg.path_dispersal_distances,
+        u_a=root_location,
+        t_a=spatial_arg.ts.max_root_time-row["time"]
+    )
+    output = []
+    indices = []
+    if label != "":
+        label += "_"
+    for i,loc in enumerate(ancestor_location):
+        output.append(loc)
+        output.append(variance_in_ancestor_location[i][i])
+        indices.append(label + "estimated_location_"+str(i))
+        indices.append(label + "variance_in_estimated_location_"+str(i))
+    return pd.Series(output, index=indices)
+
+def track_sample_ancestor_in_window_orig(row, spatial_arg, window_size, use_theoretical_dispersal=False):
+    left, right = get_window_bounds(genome_pos=row["genome_position"], spatial_arg=spatial_arg, window_size=window_size)
+    tree = spatial_arg.ts.keep_intervals(np.array([[left, right]]), simplify=False).trim()
+    tree = remove_unattached_nodes(ts=tree)
+    spatial_tree = SpatialARG(ts=tree)
+    if use_theoretical_dispersal:
+        spatial_tree.dispersal_rate_matrix = np.array([[0.25*0.25+0.5,0],[0,0.25*0.25+0.5]])
+    row["genome_position"] = row["genome_position"] - left
+    return track_sample_ancestor_orig(row=row, spatial_arg=spatial_tree, label="window_orig_"+str(window_size))
+
+def estimate_locations_of_ancestors_in_dataframe_using_window_orig(df, spatial_arg, window_size, use_theoretical_dispersal=False):
+    df = pd.concat([df, df.progress_apply(track_sample_ancestor_in_window_orig, axis=1, spatial_arg=spatial_arg, window_size=window_size, use_theoretical_dispersal=use_theoretical_dispersal)], axis=1)
+    return df
+
+
+def track_sample_ancestor_in_tree(row, spatial_arg, use_theoretical_dispersal=False):
+    interval = spatial_arg.ts.at(row["genome_position"]).interval
+    tree = spatial_arg.ts.keep_intervals(np.array([[interval[0], interval[1]]]), simplify=False).trim()
+    tree = remove_unattached_nodes(ts=tree)
+    spatial_tree = SpatialARG(ts=tree)
+    if use_theoretical_dispersal:
+        spatial_tree.dispersal_rate_matrix = np.array([[0.25*0.25+0.5,0],[0,0.25*0.25+0.5]])
+    row["genome_position"] = 0
+    return track_sample_ancestor(row=row, spatial_arg=spatial_tree, label="tree")
+
+def estimate_locations_of_ancestors_in_dataframe_using_tree(df, spatial_arg, use_theoretical_dispersal=False):
+    df = pd.concat([df, df.apply(track_sample_ancestor_in_tree, axis=1, spatial_arg=spatial_arg, use_theoretical_dispersal=use_theoretical_dispersal)], axis=1)
+    return df
