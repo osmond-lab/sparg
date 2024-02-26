@@ -230,6 +230,7 @@ class SpatialARG:
     node_paths
     inverted_paths_shared_time_matrix
     root_locations
+    root_covariance_matrix
     path_dispersal_distances
     dispersal_rate_matrix
     fishers_information_1
@@ -261,7 +262,9 @@ class SpatialARG:
         section_start_time = time.time()
         locations_of_path_starts, locations_of_samples = self.expand_locations()
         roots_array, roots = self.build_roots_array()
-        root_locations = self.locate_roots(roots_array=roots_array, locations_of_path_starts=locations_of_path_starts)
+        self.roots_array = roots_array
+        self.roots = roots
+        root_locations, self.root_covariance_matrix = self.locate_roots(roots_array=roots_array, locations_of_path_starts=locations_of_path_starts)
         self.root_locations = dict(zip(roots, root_locations))
         root_locations_vector = np.matmul(roots_array, root_locations)
         if verbose:
@@ -415,12 +418,18 @@ class SpatialARG:
                         cov_mat = np.vstack(  (cov_mat, cov_mat[path,:].reshape(1,cov_mat.shape[1]) )) #Duplicate the row
                         if len(internal_nodes) != 0:
                             shared_time = np.hstack(  (shared_time, shared_time[:,path].reshape(shared_time.shape[0],1) )) #Duplicate the column
+                            for internal_path_ind in internal_indices[path]:
+                                internal_paths[internal_path_ind] += [parent1]
                     elif i%2 == 0: 
                         paths[path].append(parent1)
                         parent1_ind += [path]
+                        for internal_path_ind in internal_indices[path]:
+                            internal_paths[internal_path_ind] += [parent1]
                     elif i%2 == 1: 
                         paths[path].append(parent2)
                         parent2_ind += [path]
+                        for internal_path_ind in internal_indices[path]:
+                            internal_paths[internal_path_ind] += [parent2]
                     else: 
                         raise RuntimeError("Path index is not an integer")
                 edge_len = self.ts.node(parent_nodes[0]).time - node.time
@@ -532,7 +541,7 @@ class SpatialARG:
             if len(pivots) != A.shape[0]:
                 print("Multiple solutions to system of linear equations in root location calculation.")
                 warnings.warn("Multiple solutions to system of linear equations in root location calculation.")
-            return np.array(rre_form.col(range(-locations_of_path_starts.shape[1],0)), dtype=np.float64)
+            return np.array(rre_form.col(range(-locations_of_path_starts.shape[1],0)), dtype=np.float64), np.linalg.inv(A)
 
 
 #### ESTIMATING LOCATIONS
