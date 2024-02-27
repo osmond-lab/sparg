@@ -229,8 +229,9 @@ class SpatialARG:
     node_paths_shared_times
     node_paths
     inverted_paths_shared_time_matrix
+    roots
+    roots_array
     root_locations
-    root_covariance_matrix
     path_dispersal_distances
     dispersal_rate_matrix
     fishers_information_1
@@ -262,9 +263,10 @@ class SpatialARG:
         section_start_time = time.time()
         locations_of_path_starts, locations_of_samples = self.expand_locations()
         roots_array, roots = self.build_roots_array()
-        self.roots_array = roots_array
         self.roots = roots
-        root_locations, self.root_covariance_matrix = self.locate_roots(roots_array=roots_array, locations_of_path_starts=locations_of_path_starts)
+        self.roots_array = roots_array
+        self.root_covariance_matrix = np.linalg.pinv(np.matmul(np.matmul(np.transpose(roots_array), self.inverted_paths_shared_time_matrix), roots_array))
+        root_locations = self.locate_roots(roots_array=roots_array, locations_of_path_starts=locations_of_path_starts)
         self.root_locations = dict(zip(roots, root_locations))
         root_locations_vector = np.matmul(roots_array, root_locations)
         if verbose:
@@ -418,18 +420,12 @@ class SpatialARG:
                         cov_mat = np.vstack(  (cov_mat, cov_mat[path,:].reshape(1,cov_mat.shape[1]) )) #Duplicate the row
                         if len(internal_nodes) != 0:
                             shared_time = np.hstack(  (shared_time, shared_time[:,path].reshape(shared_time.shape[0],1) )) #Duplicate the column
-                            for internal_path_ind in internal_indices[path]:
-                                internal_paths[internal_path_ind] += [parent1]
                     elif i%2 == 0: 
                         paths[path].append(parent1)
                         parent1_ind += [path]
-                        for internal_path_ind in internal_indices[path]:
-                            internal_paths[internal_path_ind] += [parent1]
                     elif i%2 == 1: 
                         paths[path].append(parent2)
                         parent2_ind += [path]
-                        for internal_path_ind in internal_indices[path]:
-                            internal_paths[internal_path_ind] += [parent2]
                     else: 
                         raise RuntimeError("Path index is not an integer")
                 edge_len = self.ts.node(parent_nodes[0]).time - node.time
@@ -541,12 +537,12 @@ class SpatialARG:
             if len(pivots) != A.shape[0]:
                 print("Multiple solutions to system of linear equations in root location calculation.")
                 warnings.warn("Multiple solutions to system of linear equations in root location calculation.")
-            return np.array(rre_form.col(range(-locations_of_path_starts.shape[1],0)), dtype=np.float64), np.linalg.inv(A)
+            return np.array(rre_form.col(range(-locations_of_path_starts.shape[1],0)), dtype=np.float64)
 
 
 #### ESTIMATING LOCATIONS
 
-def estimate_location_and_variance(sigma_squared, s_a, inverted_cov_mat, sample_locs_to_root_locs, u_a, t_a):
+def estimate_location_and_variance(sigma_squared, s_a, inverted_cov_mat, sample_locs_to_root_locs, u_a, t_a, roots_array, e_ra, root_cv):
     """
 
     Parameters
@@ -569,14 +565,17 @@ def estimate_location_and_variance(sigma_squared, s_a, inverted_cov_mat, sample_
     ancestor_location :
     variance_in_ancestor_location :
     """
-
-    matmul_prod = np.matmul(s_a, inverted_cov_mat)
-    ancestor_location = u_a + np.matmul(matmul_prod, sample_locs_to_root_locs)
-    explained_variance = np.matmul(matmul_prod, np.transpose(s_a))
+    s_a = s_a[:,None]
+    matmul_prod = np.matmul(np.transpose(s_a), inverted_cov_mat)
+    ancestor_location = (u_a + np.matmul(matmul_prod, sample_locs_to_root_locs))[0]
+    explained_variance = np.matmul(matmul_prod, s_a)
     ones = np.ones(inverted_cov_mat.shape[0])
-    unexplained_denominator = np.matmul(np.matmul(np.transpose(ones),inverted_cov_mat),ones)
-    unexplained_numerator = (1-np.matmul(np.matmul(np.transpose(s_a),inverted_cov_mat),ones))**2
-    corrected_variance_scaling_factor = t_a-explained_variance+(unexplained_numerator/unexplained_denominator)
+    #unexplained_denominator = np.matmul(np.matmul(np.transpose(ones),inverted_cov_mat),ones)
+    #unexplained_numerator = (1-np.matmul(np.matmul(np.transpose(s_a),inverted_cov_mat),ones))**2
+    correction_3 = e_ra - np.matmul(np.matmul(np.transpose(roots_array), inverted_cov_mat), s_a)
+    correction_1 = np.transpose(correction_3)
+    correction_factor = np.matmul(np.matmul(correction_1, root_cv), correction_3)
+    corrected_variance_scaling_factor = t_a-explained_variance+correction_factor #(unexplained_numerator/unexplained_denominator)
     variance_in_ancestor_location = sigma_squared*corrected_variance_scaling_factor
     return ancestor_location, variance_in_ancestor_location
 
@@ -616,8 +615,8 @@ def find_nearest_ancestral_nodes_at_time(tree, u, time):
 def estimate_locations_of_ancestors_in_dataframe_using_arg(df, spatial_arg):
     """
     """
-    
-    df = pd.concat([df, df.progress_apply(track_sample_ancestor, axis=1, label="arg", spatial_arg=spatial_arg)], axis=1)
+    df["position_in_arg"] = df["genome_position"]
+    df = pd.concat([df, df.progress_apply(track_sample_ancestor, axis=1, label="arg", use_this_arg=spatial_arg)], axis=1)
     return df
 
 
@@ -636,7 +635,7 @@ def get_window_bounds(genome_pos, spatial_arg, window_size):
     return left, right #pd.Series({"window_"+str(num_neighbors)+"_left":window_left, "window_"+str(num_neighbors)+"_right":window_right})
 
 
-def track_sample_ancestor(row, label="", spatial_arg=""):
+def track_sample_ancestor(row, label="", use_this_arg="", spatial_arg="", use_theoretical_dispersal=False, duped_arg_dict={}):
     """Estimate the location of a sample's ancestor from a pandas.Series or dictionary
 
     This is useful when applied to each row from the pandas.DataFrame output by
@@ -654,15 +653,21 @@ def track_sample_ancestor(row, label="", spatial_arg=""):
         Columns for estimated locations and variances around this estimate
     """
 
-    if spatial_arg != "":
-        arg = spatial_arg
-    elif "arg" in row:
-        arg = row["arg"]
+    if use_this_arg != "":
+        arg = use_this_arg
+    elif spatial_arg != "":
+        if row["interval"] in duped_arg_dict:
+            arg = duped_arg_dict[row["interval"]]
+        else:
+            arg = retrieve_arg_for_window((row["interval"][0], row["interval"][1]), spatial_arg=spatial_arg, use_theoretical_dispersal=use_theoretical_dispersal)["arg"]
     else:
         raise RuntimeError("No ARG provided.")
-    above, below = find_nearest_ancestral_nodes_at_time(tree=arg.ts.at(row["genome_position"]), u=int(row["sample"]), time=row["time"])
+    above, below = find_nearest_ancestral_nodes_at_time(tree=arg.ts.at(row["position_in_arg"]), u=int(row["sample"]), time=row["time"])
     ancestor_specific_sharing = arg.node_paths_shared_times[above].copy()
     root_location = arg.root_locations[arg.node_paths[above][-1]]
+    root_index = np.where(arg.roots==arg.node_paths[above][-1])[0][0]
+    ancestor_specific_root = np.zeros(shape=(len(arg.roots), 1))
+    ancestor_specific_root[root_index] = 1
     additional_time = arg.ts.node(above).time - row["time"]
     for i,path in enumerate(arg.paths):
         if below in path:
@@ -673,7 +678,10 @@ def track_sample_ancestor(row, label="", spatial_arg=""):
         inverted_cov_mat=arg.inverted_paths_shared_time_matrix,
         sample_locs_to_root_locs=arg.path_dispersal_distances,
         u_a=root_location,
-        t_a=arg.ts.max_root_time-row["time"]
+        t_a=arg.ts.max_root_time-row["time"],
+        roots_array=arg.roots_array,
+        e_ra=ancestor_specific_root,
+        root_cv=arg.root_covariance_matrix
     )
     output = []
     indices = []
@@ -686,13 +694,13 @@ def track_sample_ancestor(row, label="", spatial_arg=""):
         indices.append(label + "variance_in_estimated_location_"+str(i))
     return pd.Series(output, index=indices)
 
-def retrieve_arg_for_window(row, spatial_arg, use_theoretical_dispersal=False):
-    tree = spatial_arg.ts.keep_intervals(np.array([[row[0], row[1]]]), simplify=False).trim()
+def retrieve_arg_for_window(interval, spatial_arg, use_theoretical_dispersal=False):
+    tree = spatial_arg.ts.keep_intervals(np.array([[interval[0], interval[1]]]), simplify=False).trim()
     tree = remove_unattached_nodes(ts=tree)
     spatial_tree = SpatialARG(ts=tree)
     if use_theoretical_dispersal:
         spatial_tree.dispersal_rate_matrix = np.array([[0.25*0.25+0.5,0],[0,0.25*0.25+0.5]])
-    return pd.Series({"interval": row, "arg": spatial_tree})
+    return pd.Series({"interval": interval, "arg": spatial_tree})
 
 def estimate_locations_of_ancestors_in_dataframe_using_window(df, spatial_arg, window_size, use_theoretical_dispersal=False):
     """
@@ -704,14 +712,23 @@ def estimate_locations_of_ancestors_in_dataframe_using_window(df, spatial_arg, w
     intervals = df["genome_position"].progress_apply(get_window_bounds, spatial_arg=spatial_arg, window_size=window_size)
     intervals.name = "interval"
     with_windows = pd.concat([df, intervals], axis=1)
-    unique_args = intervals.drop_duplicates().progress_apply(
+    # check if interval is used more than once...
+    duped_args = intervals[intervals.duplicated()].drop_duplicates().progress_apply(
         retrieve_arg_for_window,
         spatial_arg=spatial_arg,
         use_theoretical_dispersal=use_theoretical_dispersal
     )
-    with_windows = pd.merge(with_windows, unique_args, on="interval", how="left")
-    with_windows["genome_position"] = with_windows["genome_position"] - with_windows["interval"].str[0]
-    df = pd.concat([df, with_windows.progress_apply(track_sample_ancestor, axis=1, label="window_"+str(window_size))], axis=1)
+    duped_dict = dict(zip(duped_args["interval"], duped_args["arg"]))
+    #with_windows = pd.merge(with_windows, duped_args, on="interval", how="left")
+    with_windows["position_in_arg"] = with_windows["genome_position"] - with_windows["interval"].str[0]
+    df = pd.concat([df, with_windows.progress_apply(
+        track_sample_ancestor,
+        axis=1,
+        label="window_"+str(window_size),
+        spatial_arg=spatial_arg,
+        use_theoretical_dispersal=True,
+        duped_arg_dict=duped_dict
+    )], axis=1)
     return df
 
 
@@ -758,7 +775,7 @@ def midpoint_locations(row, succinct_ts, node_locations, dimensions=2, label="mi
     if above == None:
         ancestor_location = node_locations[below][:dimensions]
     elif below == None:
-        print(row)
+        raise RuntimeError(f"Nothing below node. %s" % (row))
     else:
         for d in range(dimensions):
             ancestor_location.append((row["time"]-succinct_ts.node(below).time)*((node_locations[below][d]-node_locations[above][d])/(succinct_ts.node(below).time-succinct_ts.node(above).time))+node_locations[below][d])
@@ -991,78 +1008,77 @@ def get_paths_for_node(ts, node):
 
 
 
-def track_sample_ancestor_orig(row, spatial_arg, label=""):
-    """Estimate the location of a sample's ancestor from a pandas.Series or dictionary
+#def track_sample_ancestor_orig(row, spatial_arg, label=""):
+#    """Estimate the location of a sample's ancestor from a pandas.Series or dictionary
+#
+#    This is useful when applied to each row from the pandas.DataFrame output by
+#    `create_ancestors_dataframe()`.
+#
+#    Parameters
+#    ----------
+#    row : pandas.Series or dict
+#        Must have key: sample, interval_left, and time
+#    ts : tskit.TreeSequence
+#    spatial_parameters : tuple
+#        Output from `estimate_spatial_parameters()`. This includes the dispersal rate matrix, paths,
+#        root locations, etc.
+#
+#    Returns
+#    -------
+#    pandas.Series
+#        Columns for estimated locations and variances around this estimate
+#    """
+#
+#    above, below = find_nearest_ancestral_nodes_at_time(tree=spatial_arg.ts.at(row["genome_position"]), u=int(row["sample"]), time=row["time"])
+#    ancestor_specific_sharing = spatial_arg.node_paths_shared_times[above].copy()
+#    root_location = spatial_arg.root_locations[spatial_arg.node_paths[above][-1]]
+#    additional_time = spatial_arg.ts.node(above).time - row["time"]
+#    for i,path in enumerate(spatial_arg.paths):
+#        if below in path:
+#            ancestor_specific_sharing[i] += additional_time
+#    ancestor_location, variance_in_ancestor_location = estimate_location_and_variance(
+#        sigma_squared=spatial_arg.dispersal_rate_matrix,
+#        s_a=ancestor_specific_sharing,
+#        inverted_cov_mat=spatial_arg.inverted_paths_shared_time_matrix,
+#        sample_locs_to_root_locs=spatial_arg.path_dispersal_distances,
+#        u_a=root_location,
+#        t_a=spatial_arg.ts.max_root_time-row["time"]
+#    )
+#    output = []
+#    indices = []
+#    if label != "":
+#        label += "_"
+#    for i,loc in enumerate(ancestor_location):
+#        output.append(loc)
+#        output.append(variance_in_ancestor_location[i][i])
+#        indices.append(label + "estimated_location_"+str(i))
+#        indices.append(label + "variance_in_estimated_location_"+str(i))
+#    return pd.Series(output, index=indices)
 
-    This is useful when applied to each row from the pandas.DataFrame output by
-    `create_ancestors_dataframe()`.
+#def track_sample_ancestor_in_window_orig(row, spatial_arg, window_size, use_theoretical_dispersal=False):
+#    left, right = get_window_bounds(genome_pos=row["genome_position"], spatial_arg=spatial_arg, window_size=window_size)
+#    tree = spatial_arg.ts.keep_intervals(np.array([[left, right]]), simplify=False).trim()
+#    tree = remove_unattached_nodes(ts=tree)
+#    spatial_tree = SpatialARG(ts=tree)
+#    if use_theoretical_dispersal:
+#        spatial_tree.dispersal_rate_matrix = np.array([[0.25*0.25+0.5,0],[0,0.25*0.25+0.5]])
+#    row["genome_position"] = row["genome_position"] - left
+#    return track_sample_ancestor_orig(row=row, spatial_arg=spatial_tree, label="window_orig_"+str(window_size))
 
-    Parameters
-    ----------
-    row : pandas.Series or dict
-        Must have key: sample, interval_left, and time
-    ts : tskit.TreeSequence
-    spatial_parameters : tuple
-        Output from `estimate_spatial_parameters()`. This includes the dispersal rate matrix, paths,
-        root locations, etc.
+#def estimate_locations_of_ancestors_in_dataframe_using_window_orig(df, spatial_arg, window_size, use_theoretical_dispersal=False):
+#    df = pd.concat([df, df.progress_apply(track_sample_ancestor_in_window_orig, axis=1, spatial_arg=spatial_arg, window_size=window_size, use_theoretical_dispersal=use_theoretical_dispersal)], axis=1)
+#    return df
 
-    Returns
-    -------
-    pandas.Series
-        Columns for estimated locations and variances around this estimate
-    """
+#def track_sample_ancestor_in_tree(row, spatial_arg, use_theoretical_dispersal=False):
+#    interval = spatial_arg.ts.at(row["genome_position"]).interval
+#    tree = spatial_arg.ts.keep_intervals(np.array([[interval[0], interval[1]]]), simplify=False).trim()
+#    tree = remove_unattached_nodes(ts=tree)
+#    spatial_tree = SpatialARG(ts=tree)
+#    if use_theoretical_dispersal:
+#        spatial_tree.dispersal_rate_matrix = np.array([[0.25*0.25+0.5,0],[0,0.25*0.25+0.5]])
+#    row["genome_position"] = 0
+#    return track_sample_ancestor(row=row, spatial_arg=spatial_tree, label="tree")
 
-    above, below = find_nearest_ancestral_nodes_at_time(tree=spatial_arg.ts.at(row["genome_position"]), u=int(row["sample"]), time=row["time"])
-    ancestor_specific_sharing = spatial_arg.node_paths_shared_times[above].copy()
-    root_location = spatial_arg.root_locations[spatial_arg.node_paths[above][-1]]
-    additional_time = spatial_arg.ts.node(above).time - row["time"]
-    for i,path in enumerate(spatial_arg.paths):
-        if below in path:
-            ancestor_specific_sharing[i] += additional_time
-    ancestor_location, variance_in_ancestor_location = estimate_location_and_variance(
-        sigma_squared=spatial_arg.dispersal_rate_matrix,
-        s_a=ancestor_specific_sharing,
-        inverted_cov_mat=spatial_arg.inverted_paths_shared_time_matrix,
-        sample_locs_to_root_locs=spatial_arg.path_dispersal_distances,
-        u_a=root_location,
-        t_a=spatial_arg.ts.max_root_time-row["time"]
-    )
-    output = []
-    indices = []
-    if label != "":
-        label += "_"
-    for i,loc in enumerate(ancestor_location):
-        output.append(loc)
-        output.append(variance_in_ancestor_location[i][i])
-        indices.append(label + "estimated_location_"+str(i))
-        indices.append(label + "variance_in_estimated_location_"+str(i))
-    return pd.Series(output, index=indices)
-
-def track_sample_ancestor_in_window_orig(row, spatial_arg, window_size, use_theoretical_dispersal=False):
-    left, right = get_window_bounds(genome_pos=row["genome_position"], spatial_arg=spatial_arg, window_size=window_size)
-    tree = spatial_arg.ts.keep_intervals(np.array([[left, right]]), simplify=False).trim()
-    tree = remove_unattached_nodes(ts=tree)
-    spatial_tree = SpatialARG(ts=tree)
-    if use_theoretical_dispersal:
-        spatial_tree.dispersal_rate_matrix = np.array([[0.25*0.25+0.5,0],[0,0.25*0.25+0.5]])
-    row["genome_position"] = row["genome_position"] - left
-    return track_sample_ancestor_orig(row=row, spatial_arg=spatial_tree, label="window_orig_"+str(window_size))
-
-def estimate_locations_of_ancestors_in_dataframe_using_window_orig(df, spatial_arg, window_size, use_theoretical_dispersal=False):
-    df = pd.concat([df, df.progress_apply(track_sample_ancestor_in_window_orig, axis=1, spatial_arg=spatial_arg, window_size=window_size, use_theoretical_dispersal=use_theoretical_dispersal)], axis=1)
-    return df
-
-
-def track_sample_ancestor_in_tree(row, spatial_arg, use_theoretical_dispersal=False):
-    interval = spatial_arg.ts.at(row["genome_position"]).interval
-    tree = spatial_arg.ts.keep_intervals(np.array([[interval[0], interval[1]]]), simplify=False).trim()
-    tree = remove_unattached_nodes(ts=tree)
-    spatial_tree = SpatialARG(ts=tree)
-    if use_theoretical_dispersal:
-        spatial_tree.dispersal_rate_matrix = np.array([[0.25*0.25+0.5,0],[0,0.25*0.25+0.5]])
-    row["genome_position"] = 0
-    return track_sample_ancestor(row=row, spatial_arg=spatial_tree, label="tree")
-
-def estimate_locations_of_ancestors_in_dataframe_using_tree(df, spatial_arg, use_theoretical_dispersal=False):
-    df = pd.concat([df, df.apply(track_sample_ancestor_in_tree, axis=1, spatial_arg=spatial_arg, use_theoretical_dispersal=use_theoretical_dispersal)], axis=1)
-    return df
+#def estimate_locations_of_ancestors_in_dataframe_using_tree(df, spatial_arg, use_theoretical_dispersal=False):
+#    df = pd.concat([df, df.apply(track_sample_ancestor_in_tree, axis=1, spatial_arg=spatial_arg, use_theoretical_dispersal=use_theoretical_dispersal)], axis=1)
+#    return df
