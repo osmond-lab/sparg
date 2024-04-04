@@ -1,6 +1,5 @@
-msprime
+numpy
 sympy
-matplotlib
-tskit_arg_visualizer
-networkx
 tqdm
+pandas
+msprime
