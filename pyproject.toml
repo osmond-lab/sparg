@@ -1,7 +1,12 @@
 [project]
-name = "tskit_arg_visualizer"
-version = "0.0.1"
-authors = [{name="James Kitchens",email="kitchensjn@gmail.com"}]
+name = "sparg"
+version = "2.0.0"
+authors = [
+    {name="Puneeth Deraje"},
+    {name="James Kitchens",email="jkitchens@ucdavis.edu"},
+    {name="Graham Coop"},
+    {name="Matthew Osmond"},
+]
 description = "Using the ancestral recombination graphs to estimate dispersal rates and track the locations of genetic ancestors. See XXXXX for the paper on these methods."
 readme = "README.md"
 keywords = [
@@ -39,14 +44,13 @@ classifiers = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/osmond-lab/sparg2.0/tree/package"
-"Changelog" = "https://github.com/osmond-lab/sparg2.0/blob/package/CHANGELOG.rst"
-"Bug Tracker" = "https://github.com/osmond-lab/sparg2.0/issues"
+"Homepage" = "https://github.com/osmond-lab/sparg"
+"Changelog" = "https://github.com/osmond-lab/sparg/blob/main/CHANGELOG.rst"
+"Bug Tracker" = "https://github.com/osmond-lab/sparg/issues"
 
 [build-system]
 requires = [
     "setuptools>=42",
-    "setuptools_scm",
     "wheel",
     "oldest-supported-numpy"
 ]
