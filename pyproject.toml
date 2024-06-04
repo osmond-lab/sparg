@@ -22,7 +22,6 @@ dependencies = [
     "sympy",
     "tqdm",
     "pandas",
-    "msprime",
 ]
 classifiers = [
     "Programming Language :: Python",
