@@ -4,7 +4,7 @@ Using the ancestral recombination graphs to estimate dispersal rates and track t
 ## Installation
 
 ```
-pip install sparg
+pip install "git+https://github.com/osmond-lab/sparg.git"
 ```
 
 ## Inputs
