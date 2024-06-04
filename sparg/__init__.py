@@ -5,7 +5,6 @@ import warnings
 from tqdm import tqdm
 import time
 import pandas as pd
-import msprime
 import random
 
 from tqdm.notebook import tqdm_notebook
@@ -140,7 +139,7 @@ def simplify_with_recombination(ts, flag_recomb=False, keep_nodes=[]):
         ts_tables = ts.dump_tables()
         node_table = ts_tables.nodes
         flags = node_table.flags
-        flags[recomb_nodes] = msprime.NODE_IS_RE_EVENT
+        flags[recomb_nodes] = 131072 #msprime.NODE_IS_RE_EVENT
         node_table.flags = flags
         ts_tables.sort() 
         ts = ts_tables.tree_sequence()

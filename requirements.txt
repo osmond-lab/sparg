@@ -2,4 +2,3 @@ numpy
 sympy
 tqdm
 pandas
-msprime
