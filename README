@@ -46,5 +46,10 @@ programs/SLiM/build/slim -d L=1e6 -d r=1e-8 -d R=2 -d SIGMA_int=1 -d SIGMA_disp=
 
 # open jupyter
 jupyter-lab
-# and from there navigate to notebook of interest within jupyter-notebooks/
+# and from there navigate to to the figure of interest in the figures/
+#For figures 4 and 5, the .ipynb file required to generate the data files and the figures are found inside the folder.
+#For figures 2,3,6 and 7 the corresponding figure folder contains a folder called Code which has the .ipynb file 
+#For figure 2, the code to generate the data file is also provided as a python file so it can be run on a cluster. 
+
+ 
 
