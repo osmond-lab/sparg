@@ -3,3 +3,4 @@ dist
 sparg.egg-info
 example.py
 __pycache__
+.ipynb_checkpoints/

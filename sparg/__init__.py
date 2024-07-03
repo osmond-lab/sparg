@@ -69,6 +69,9 @@ def generate_random_ancestors_dataframe(ts, number_of_ancestors, include_locatio
         Output pandas.DataFrame containing all of the random genetic ancestors, one per row.
     """
     
+    if cutoff > ts.max_root_time: # check that cutoff isn't further than max_root_time
+        warnings.warn(f"Provided cutoff %s is greater than the max root time %s. Using max root time instead." % (cutoff, ts.max_root_time))
+        cutoff = ts.max_root_time
     if seed != None:
         random.seed(seed)
     samples = []
@@ -810,7 +813,6 @@ def estimate_locations_of_ancestors_in_dataframe_using_window(df, spatial_arg, w
     intervals.name = "interval"
     with_windows = pd.concat([df, intervals], axis=1)
     # check if interval is used more than once...
-    print(intervals[intervals.duplicated()].drop_duplicates())
     duped_args = intervals[intervals.duplicated()].drop_duplicates().progress_apply(
         retrieve_arg_for_window,
         spatial_arg=spatial_arg,
