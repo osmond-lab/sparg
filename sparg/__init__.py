@@ -640,7 +640,6 @@ def estimate_locations_of_ancestors_in_dataframe_using_arg(df, spatial_arg, verb
 
     df.loc[:, "position_in_arg"] = df.loc[:, "genome_position"]
     if verbose:
-        tqdm_notebook.pandas()
         df = pd.concat([df, df.progress_apply(track_sample_ancestor, axis=1, label="arg", use_this_arg=spatial_arg)], axis=1)
     else:
         df = pd.concat([df, df.apply(track_sample_ancestor, axis=1, label="arg", use_this_arg=spatial_arg)], axis=1)
@@ -805,11 +804,16 @@ def estimate_locations_of_ancestors_in_dataframe_using_window(df, spatial_arg, w
     if "starting_window" in df:
         if window_size < 0:
             if window_size == -1:
-                intervals = df["genome_position"].progress_apply(get_window_bounds, spatial_arg=spatial_arg, window_size=0)
+                if verbose:
+                    intervals = df["genome_position"].progress_apply(get_window_bounds, spatial_arg=spatial_arg, window_size=0)
+                else:
+                    intervals = df["genome_position"].apply(get_window_bounds, spatial_arg=spatial_arg, window_size=0)
             else:
                 raise RuntimeError("Window sizes can only be >= -1 when starting window provided.")
-        else:
+        elif verbose:
             intervals = df["starting_window"].progress_apply(get_window_bounds, spatial_arg=spatial_arg, window_size=window_size)
+        else:
+            intervals = df["starting_window"].apply(get_window_bounds, spatial_arg=spatial_arg, window_size=window_size)
     elif window_size < 0:
         raise RuntimeError("Cannot provide negative window size if no starting window provided.")
     elif verbose:
