@@ -625,7 +625,7 @@ def find_nearest_ancestral_nodes_at_time(tree, u, time):
         u = tree.parent(u)
     return None, v
 
-def estimate_locations_of_ancestors_in_dataframe_using_arg(df, spatial_arg):
+def estimate_locations_of_ancestors_in_dataframe_using_arg(df, spatial_arg, verbose=False):
     """Estimates the locations of genetic ancestors in dataframe using the full chromosome ARG
 
     Parameters
@@ -639,7 +639,10 @@ def estimate_locations_of_ancestors_in_dataframe_using_arg(df, spatial_arg):
     """
 
     df.loc[:, "position_in_arg"] = df.loc[:, "genome_position"]
-    df = pd.concat([df, df.progress_apply(track_sample_ancestor, axis=1, label="arg", use_this_arg=spatial_arg)], axis=1)
+    if verbose:
+        df = pd.concat([df, df.progress_apply(track_sample_ancestor, axis=1, label="arg", use_this_arg=spatial_arg)], axis=1)
+    else:
+        df = pd.concat([df, df.apply(track_sample_ancestor, axis=1, label="arg", use_this_arg=spatial_arg)], axis=1)
     return df
 
 def get_window_bounds(genome_pos, spatial_arg, window_size):
@@ -775,7 +778,7 @@ def retrieve_arg_for_window(interval, spatial_arg, use_theoretical_dispersal=Fal
         spatial_tree.dispersal_rate_matrix = np.array([[0.25*0.25+0.5,0],[0,0.25*0.25+0.5]])
     return pd.Series({"interval": interval, "arg": spatial_tree})
 
-def estimate_locations_of_ancestors_in_dataframe_using_window(df, spatial_arg, window_size, use_theoretical_dispersal=False):
+def estimate_locations_of_ancestors_in_dataframe_using_window(df, spatial_arg, window_size, use_theoretical_dispersal=False, verbose=False):
     """
     
     Note: There may be a way to do this without applying to pd.DataFrame twice (caching?) but this
@@ -813,21 +816,38 @@ def estimate_locations_of_ancestors_in_dataframe_using_window(df, spatial_arg, w
     intervals.name = "interval"
     with_windows = pd.concat([df, intervals], axis=1)
     # check if interval is used more than once...
-    duped_args = intervals[intervals.duplicated()].drop_duplicates().progress_apply(
-        retrieve_arg_for_window,
-        spatial_arg=spatial_arg,
-        use_theoretical_dispersal=use_theoretical_dispersal
-    )
+    if verbose:
+        duped_args = intervals[intervals.duplicated()].drop_duplicates().progress_apply(
+            retrieve_arg_for_window,
+            spatial_arg=spatial_arg,
+            use_theoretical_dispersal=use_theoretical_dispersal
+        )
+    else:
+        duped_args = intervals[intervals.duplicated()].drop_duplicates().apply(
+            retrieve_arg_for_window,
+            spatial_arg=spatial_arg,
+            use_theoretical_dispersal=use_theoretical_dispersal
+        )
     duped_dict = dict(zip(duped_args["interval"], duped_args["arg"]))
     with_windows["position_in_arg"] = with_windows["genome_position"] - with_windows["interval"].str[0]
-    df = pd.concat([df, with_windows.progress_apply(
-        track_sample_ancestor,
-        axis=1,
-        label="window_"+str(window_size),
-        spatial_arg=spatial_arg,
-        use_theoretical_dispersal=True,
-        duped_arg_dict=duped_dict
-    )], axis=1)
+    if verbose:
+        df = pd.concat([df, with_windows.progress_apply(
+            track_sample_ancestor,
+            axis=1,
+            label="window_"+str(window_size),
+            spatial_arg=spatial_arg,
+            use_theoretical_dispersal=True,
+            duped_arg_dict=duped_dict
+        )], axis=1)
+    else:
+        df = pd.concat([df, with_windows.apply(
+            track_sample_ancestor,
+            axis=1,
+            label="window_"+str(window_size),
+            spatial_arg=spatial_arg,
+            use_theoretical_dispersal=True,
+            duped_arg_dict=duped_dict
+        )], axis=1)
     return df
 
 
