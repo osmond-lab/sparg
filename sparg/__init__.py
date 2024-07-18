@@ -683,7 +683,7 @@ def get_window_bounds(genome_pos, spatial_arg, window_size):
     return left, right
 
 
-def track_sample_ancestor(row, label="", use_this_arg="", spatial_arg="", use_theoretical_dispersal=False, duped_arg_dict={}):
+def track_sample_ancestor(row, label="", use_this_arg="", spatial_arg="", use_theoretical_dispersal=False, duped_arg_dict={}, dimensions=2):
     """Estimate the location of a sample's ancestor from a pandas.Series or dictionary
 
     This is useful when applied to each row from the pandas.DataFrame output by
@@ -716,7 +716,7 @@ def track_sample_ancestor(row, label="", use_this_arg="", spatial_arg="", use_th
         if row["interval"] in duped_arg_dict:
             arg = duped_arg_dict[row["interval"]]
         else:
-            arg = retrieve_arg_for_window((row["interval"][0], row["interval"][1]), spatial_arg=spatial_arg, use_theoretical_dispersal=use_theoretical_dispersal)["arg"]
+            arg = retrieve_arg_for_window((row["interval"][0], row["interval"][1]), spatial_arg=spatial_arg, use_theoretical_dispersal=use_theoretical_dispersal, dimensions=dimensions)["arg"]
     else:
         raise RuntimeError("No ARG provided.")
     above, below = find_nearest_ancestral_nodes_at_time(tree=arg.ts.at(row["position_in_arg"]), u=int(row["sample"]), time=row["time"])
@@ -751,7 +751,7 @@ def track_sample_ancestor(row, label="", use_this_arg="", spatial_arg="", use_th
         indices.append(label + "variance_in_estimated_location_"+str(i))
     return pd.Series(output, index=indices)
 
-def retrieve_arg_for_window(interval, spatial_arg, use_theoretical_dispersal=False):
+def retrieve_arg_for_window(interval, spatial_arg, use_theoretical_dispersal=False, dimensions=2):
     """Calculates the sparg.SpatialARG for a specified window
     
     This is useful to avoid redundant calculations for the same window. Stored as a pandas.Series.
@@ -773,12 +773,12 @@ def retrieve_arg_for_window(interval, spatial_arg, use_theoretical_dispersal=Fal
 
     tree = spatial_arg.ts.keep_intervals(np.array([[interval[0], interval[1]]]), simplify=False).trim()
     tree = remove_unattached_nodes(ts=tree)
-    spatial_tree = SpatialARG(ts=tree)
+    spatial_tree = SpatialARG(ts=tree, dimensions=dimensions)
     if use_theoretical_dispersal:
         spatial_tree.dispersal_rate_matrix = np.array([[0.25*0.25+0.5,0],[0,0.25*0.25+0.5]])
     return pd.Series({"interval": interval, "arg": spatial_tree})
 
-def estimate_locations_of_ancestors_in_dataframe_using_window(df, spatial_arg, window_size, use_theoretical_dispersal=False, verbose=False):
+def estimate_locations_of_ancestors_in_dataframe_using_window(df, spatial_arg, window_size, use_theoretical_dispersal=False, verbose=False, dimensions=2):
     """
     
     Note: There may be a way to do this without applying to pd.DataFrame twice (caching?) but this
@@ -790,10 +790,13 @@ def estimate_locations_of_ancestors_in_dataframe_using_window(df, spatial_arg, w
         Contains the genetic ancestors to be estimated
     spatial_arg : sparg.SpatialARG
         SpatialARG containing the covariances between paths
-    window_size :
+    window_size : int
         Number of neighboring trees on either side of the local tree
     use_theoretical_dispersal : bool
         Whether to use the expected dispersal rate for the simulation (for our simulation it is 0.25*0.25+0.5). Default is False.
+    verbose : bool
+    dimension : int
+        Number of dimensions to investigate. Default is 2.
     
     Returns
     -------
@@ -827,13 +830,15 @@ def estimate_locations_of_ancestors_in_dataframe_using_window(df, spatial_arg, w
         duped_args = intervals[intervals.duplicated()].drop_duplicates().progress_apply(
             retrieve_arg_for_window,
             spatial_arg=spatial_arg,
-            use_theoretical_dispersal=use_theoretical_dispersal
+            use_theoretical_dispersal=use_theoretical_dispersal,
+            dimensions=dimensions
         )
     else:
         duped_args = intervals[intervals.duplicated()].drop_duplicates().apply(
             retrieve_arg_for_window,
             spatial_arg=spatial_arg,
-            use_theoretical_dispersal=use_theoretical_dispersal
+            use_theoretical_dispersal=use_theoretical_dispersal,
+            dimensions=dimensions
         )
     duped_dict = dict(zip(duped_args["interval"], duped_args["arg"]))
     with_windows["position_in_arg"] = with_windows["genome_position"] - with_windows["interval"].str[0]
@@ -844,7 +849,8 @@ def estimate_locations_of_ancestors_in_dataframe_using_window(df, spatial_arg, w
             label="window_"+str(window_size),
             spatial_arg=spatial_arg,
             use_theoretical_dispersal=True,
-            duped_arg_dict=duped_dict
+            duped_arg_dict=duped_dict,
+            dimensions=dimensions
         )], axis=1)
     else:
         df = pd.concat([df, with_windows.apply(
@@ -853,7 +859,8 @@ def estimate_locations_of_ancestors_in_dataframe_using_window(df, spatial_arg, w
             label="window_"+str(window_size),
             spatial_arg=spatial_arg,
             use_theoretical_dispersal=True,
-            duped_arg_dict=duped_dict
+            duped_arg_dict=duped_dict,
+            dimensions=dimensions
         )], axis=1)
     return df
 
@@ -950,7 +957,7 @@ def midpoint_locations(row, succinct_ts, node_locations, dimensions=2, label="mi
         indices.append(label + "estimated_location_"+str(i))
     return pd.Series(output, index=indices)
 
-def estimate_locations_of_ancestors_in_dataframe_using_midpoint(df, spatial_arg, simplify=False):
+def estimate_locations_of_ancestors_in_dataframe_using_midpoint(df, spatial_arg, simplify=False, dimensions=2):
     """Applying the averaging-up (midpoint) method to a dataframe of genetic ancestors
 
     Parameters
@@ -972,7 +979,7 @@ def estimate_locations_of_ancestors_in_dataframe_using_midpoint(df, spatial_arg,
     else:
         ts = spatial_arg.ts
     node_locations = calc_midpoint_node_locations(ts=ts, weighted=False)
-    df = pd.concat([df, df.apply(midpoint_locations, axis=1, succinct_ts=ts, node_locations=node_locations)], axis=1)
+    df = pd.concat([df, df.apply(midpoint_locations, axis=1, succinct_ts=ts, node_locations=node_locations, dimensions=dimensions)], axis=1)
     return df
 
 
