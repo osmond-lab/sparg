@@ -110,7 +110,7 @@ def generate_random_ancestors_dataframe(ts, number_of_ancestors, include_locatio
         df = pd.concat([df, locs], axis=1)
     return df
 
-def simplify_with_recombination(ts, flag_recomb=False, keep_nodes=[]):
+def simplify_with_recombination(ts, flag_recomb=False, keep_nodes=None):
     """Simplifies a tree sequence while keeping recombination nodes
 
     Removes unary nodes that are not recombination nodes. Does not remove non-genetic ancestors.
@@ -122,7 +122,7 @@ def simplify_with_recombination(ts, flag_recomb=False, keep_nodes=[]):
     flag_recomb (optional) : bool
         Whether to add msprime node flags. Default is False.
     keep_nodes (optional) : list
-        List of node IDs that should be kept. Default is empty list, so ignored.
+        List of node IDs that should be kept. Default is None, so empty list.
 
     Returns
     -------
@@ -131,6 +131,9 @@ def simplify_with_recombination(ts, flag_recomb=False, keep_nodes=[]):
     maps_sim : numpy.ndarray
         Mapping for nodes in the simplified tree sequence versus the original
     """
+
+    if keep_nodes == None:
+        keep_nodes = []
 
     uniq_child_parent = np.unique(np.column_stack((ts.edges_child, ts.edges_parent)), axis=0)
     child_node, parents_count = np.unique(uniq_child_parent[:, 0], return_counts=True) #For each child, count how many parents it has.
@@ -255,12 +258,12 @@ class SpatialARG:
     fishers_information_2
     """
     
-    def __init__(self, ts, locations_of_individuals={}, dimensions=2, verbose=False):
+    def __init__(self, ts, locations_of_individuals=None, dimensions=2, verbose=False):
         total_start_time = time.time()
 
         section_start_time = time.time()
         self.ts = ts
-        if locations_of_individuals == {}:  # if user doesn't provide a separate locations dictionary, builds one
+        if locations_of_individuals == None:  # if user doesn't provide a separate locations dictionary, builds one
             self.locations_of_individuals = self.get_tskit_locations(dimensions=dimensions)
         else:
             self.locations_of_individuals = locations_of_individuals
@@ -683,7 +686,7 @@ def get_window_bounds(genome_pos, spatial_arg, window_size):
     return left, right
 
 
-def track_sample_ancestor(row, label="", use_this_arg="", spatial_arg="", use_theoretical_dispersal=False, duped_arg_dict={}, dimensions=2):
+def track_sample_ancestor(row, label="", use_this_arg="", spatial_arg="", use_theoretical_dispersal=False, duped_arg_dict=None, dimensions=2):
     """Estimate the location of a sample's ancestor from a pandas.Series or dictionary
 
     This is useful when applied to each row from the pandas.DataFrame output by
@@ -709,6 +712,9 @@ def track_sample_ancestor(row, label="", use_this_arg="", spatial_arg="", use_th
     pandas.Series
         Columns for estimated locations and variances around this estimate
     """
+
+    if duped_arg_dict == None:
+        duped_arg_dict = {}
 
     if use_this_arg != "":
         arg = use_this_arg
