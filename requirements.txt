@@ -2,3 +2,5 @@ numpy
 sympy
 tqdm
 pandas
+tskit
+matplotlib
