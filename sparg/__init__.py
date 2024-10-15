@@ -82,12 +82,12 @@ def generate_random_ancestors_dataframe(ts, number_of_ancestors, include_locatio
         sample_time = -1
         while (sample_time == -1) or (sample_time > cutoff):
             sample = random.randint(0, ts.num_samples-1)
-            sample_time = ts.node(sample).time
+            sample_time = int(ts.node(sample).time)
         genome_pos = random.uniform(0, ts.sequence_length)
         if cutoff == -1:
             time = random.randint(sample_time, ts.max_root_time)
         elif cutoff >= sample_time:
-            time = random.randint(ts.node(sample).time, cutoff)
+            time = random.randint(int(ts.node(sample).time), cutoff)
         else:
             raise RuntimeError(f"Sample %s is older than the cutoff set. This shouldn't be possible...")
         tree = ts.at(genome_pos)
