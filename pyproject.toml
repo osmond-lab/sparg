@@ -22,6 +22,8 @@ dependencies = [
     "sympy",
     "tqdm",
     "pandas",
+    "tskit",
+    "matplotlib",
 ]
 classifiers = [
     "Programming Language :: Python",
