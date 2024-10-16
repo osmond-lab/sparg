@@ -1,6 +1,8 @@
 numpy
 sympy
+scipy
 tqdm
 pandas
 tskit
 matplotlib
+ipywidgets
