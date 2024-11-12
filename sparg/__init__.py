@@ -71,7 +71,7 @@ def generate_random_ancestors_dataframe(ts, number_of_ancestors, include_locatio
     
     if cutoff > ts.max_root_time: # check that cutoff isn't further than max_root_time
         warnings.warn(f"Provided cutoff %s is greater than the max root time %s. Using max root time instead." % (cutoff, ts.max_root_time))
-        cutoff = ts.max_root_time
+        cutoff = int(ts.max_root_time)
     if seed != None:
         random.seed(seed)
     samples = []
