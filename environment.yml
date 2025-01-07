@@ -1,0 +1,9 @@
+name: sparg
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12.0
+  - pip
+  - jupyterlab
+  - pip:
+    - "git+https://github.com/osmond-lab/sparg"
