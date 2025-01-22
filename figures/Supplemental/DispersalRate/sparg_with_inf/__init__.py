@@ -288,11 +288,7 @@ class SpatialARG:
         self.inf_dispersal_rate_matrix =  np.matmul(np.matmul(np.transpose(inf_sample_minus_mean_vector), self.inverted_inf_cov_mat), inf_sample_minus_mean_vector)/(self.ts.num_samples)
         
         section_start_time = time.time()
-        self.fishers_information_1 = self.ts.num_samples/(2*self.dispersal_rate_matrix[0][0]**2) 
-        self.fishers_information_2 = np.matmul(np.matmul(np.transpose(root_locations_vector), self.inverted_paths_shared_time_matrix), root_locations_vector)[0][0]/self.dispersal_rate_matrix[0][0]**3
         
-        self.inf_fishers_information_1 = self.ts.num_samples/(2*self.inf_dispersal_rate_matrix[0][0]**2) 
-        self.inf_fishers_information_2 = np.matmul(np.matmul(np.transpose(inf_root_locations_vector), self.inverted_inf_cov_mat), inf_root_locations_vector)[0][0]/self.inf_dispersal_rate_matrix[0][0]**3
         
         if verbose:
             print(f"Calculated Fisher's information matrices - Section Elapsed Time: {round(time.time()-section_start_time,2)} - Total Elapsed Time: {round(time.time()-total_start_time, 2)}")

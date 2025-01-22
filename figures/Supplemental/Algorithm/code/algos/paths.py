@@ -207,6 +207,9 @@ def benchmark(ts):
     paths = identify_unique_paths(ts=ts)
     sigma = calc_covariance_matrix(paths=paths, ts=ts)
     end = time.time()
+    sigma_inv = np.linalg.pinv(sigma)
+    final_end = time.time() 
+    return end-start, final_end-start, sigma.sum(), len(paths)
     #np.savetxt("paths_cm.csv", sigma, delimiter=",")
     return end-start, sigma.sum(), "NA"
 

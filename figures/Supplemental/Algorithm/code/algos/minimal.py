@@ -148,4 +148,6 @@ def benchmark(ts):
     start = time.time()
     sigma, paths = calc_minimal_covariance_matrix(ts=ts)
     end = time.time()
-    return end-start, sigma.sum(), len(paths)
+    sigma_inv = np.linalg.pinv(sigma)
+    final_end = time.time() 
+    return end-start, final_end-start, sigma.sum(), len(paths)
