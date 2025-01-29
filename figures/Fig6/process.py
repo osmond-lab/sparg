@@ -18,7 +18,7 @@ np.random.seed(20)
 
 # load and filter the tree sequence
 cutoff = 2000
-ts = tskit.load("../../simulations/UniformStartTwoDims/outputs/original/S025_I1_R2_W100_D2/rep5_S025_I1_R2_W100_D2.trees")
+ts = tskit.load("rep5_S025_I1_R2_W100_D2.trees")
 
 locations = ts.tables.individuals.location
 x = locations[::3]
