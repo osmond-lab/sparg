@@ -1,19 +1,19 @@
 //adapted from https://pyslim.readthedocs.io/en/latest/vignette_space.html
 initialize() {
     defineConstant("SIGMA_disp", 0.25);
-	 defineConstant("rep",1);
+	defineConstant("rep",1);
     defineConstant("L",1e6);
     defineConstant("r",1e-8);
     defineConstant("R",2);
-    //defineConstant("SIGMA_int",1); // variance of mate_interaction kernel. 
-    //defineConstant("SIGMA_comp",1); //variance of competition kernel. 
-    //defineConstant("fname", "slim_disp" + SIGMA_disp +"rep"+rep+ "sigma.trees");
+    defineConstant("SIGMA_int",1); // variance of mate_interaction kernel. 
+    defineConstant("SIGMA_comp",1); // variance of competition kernel. 
+    defineConstant("fname", "slim_disp" + SIGMA_disp +"rep"+rep+ "sigma.trees");
     //defineConstant("fname", "slim_disp" + SIGMA_disp +"_mating"+SIGMA_int+"_comp"+SIGMA_comp+ "rep"+rep+ "sigma.trees");
     defineConstant("K",1);
     defineConstant("W",100.0); 
     defineConstant("t",1e4); 
     defineConstant("N0",10000);
-	 setSeed(rep); // set seed for repeatability
+	setSeed(rep); // set seed for repeatability
     initializeSLiMModelType("nonWF"); // non Wright Fisher
     initializeSLiMOptions(dimensionality="xy"); // two spatial dimensions
     initializeTreeSeq(retainCoalescentOnly=F); // record the true tree sequence (and keep unary nodes too, for locating ancestors, later)
@@ -23,15 +23,13 @@ initialize() {
     initializeGenomicElement(g1, 0, L-1); // length of chromosome
     initializeRecombinationRate(r); // recombination rate per base
 
-    // spatial interaction for local competition and mate choice
+    // spatial interaction for mate choice
     initializeInteractionType("i1", "xy", reciprocal=T, maxDistance = 3*SIGMA_int); // define interaction type i1 for mate choice, in two spatial dimensions, where individual A has the same effect on B that B does on A (this speeds up computation), and only individuals within distance 3*SIGMA interact (again to speed things up)  
     i1.setInteractionFunction("n", 1.0/(2*PI*SIGMA_int^2), SIGMA_int); // convert distance to interaction strength using a Gaussian (n for normal), with maximum value 1/(2*pi*sigma**2) and standard deviation sigma (ie, this is truly and normal PDF with mean 0 and variance sigma**2)
-    
+
+    // spatial interaction for competition
     initializeInteractionType("i2", "xy", reciprocal=T, maxDistance = 3*SIGMA_comp); // define interaction type i2 for competition, in two spatial dimensions, where individual A has the same effect on B that B does on A (this speeds up computation), and only individuals within distance 3*SIGMA interact (again to speed things up)  
-    i2.setInteractionFunction("n", 1.0/(2*PI*SIGMA_comp^2), SIGMA_comp);
-    //i2.setInteractionFunction("f", 1);
-     // convert distance to interaction strength using a Gaussian (n for normal), with maximum value 1/(2*pi*sigma**2) and standard deviation sigma (ie, this is truly and normal PDF with mean 0 and variance sigma**2)
-    
+    i2.setInteractionFunction("n", 1.0/(2*PI*SIGMA_comp^2), SIGMA_comp); // convert distance to interaction strength using a Gaussian (n for normal), with maximum value 1/(2*pi*sigma**2) and standard deviation sigma (ie, this is truly and normal PDF with mean 0 and variance sigma**2)
 }
 
 reproduction() {
@@ -48,11 +46,10 @@ reproduction() {
 }
 
 1 early() {
-    community.rescheduleScriptBlock(s1, start=t, end=t); //set up end of simulation
-    sim.addSubpop("p1", N0); //initial popn size
-    p1.setSpatialBounds(c(0.0, 0.0, W, W)); //set spatial plane
+    community.rescheduleScriptBlock(s1, start=t, end=t); // set up end of simulation
+    sim.addSubpop("p1", N0); // initial popn size
+    p1.setSpatialBounds(c(0.0, 0.0, W, W)); // set spatial plane
     p1.individuals.setSpatialPosition(p1.pointUniform(N0)); // start with uniform distribution across range
-    //p1.individuals.setSpatialPosition(c(W/2,W/2));
 }
 
 early() {
@@ -64,13 +61,13 @@ early() {
 }
 
 late() {
-    i1.evaluate(p1); //calculate interactions
+    i1.evaluate(p1); // calculate interactions
     i2.evaluate(p1);
-    sim.treeSeqRememberIndividuals(p1.individuals, permanent=F); //remember individuals only if ancestors of final population
+    sim.treeSeqRememberIndividuals(p1.individuals, permanent=F); // remember individuals only if ancestors of final population
 }
 
 s1 late () {
-    sim.treeSeqOutput(fname); //output treesequence
-    catn("Done: Disp "+SIGMA_disp+", Mating"+SIGMA_int+", Competition"+SIGMA_comp);
+    sim.treeSeqOutput(fname); // output treesequence
+    catn("Done: Disp "+SIGMA_disp+", Mating "+SIGMA_int+", Competition "+SIGMA_comp);
     sim.simulationFinished();
 }

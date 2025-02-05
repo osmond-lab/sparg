@@ -1,0 +1,2 @@
+git+https://github.com/osmond-lab/sparg
+jupyterlab

@@ -4,7 +4,6 @@
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=40
 
-
 module load NiaEnv/2019b
 module load gcc
 module load NiaEnv/2019b gnu-parallel
