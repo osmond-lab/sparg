@@ -1,0 +1,2 @@
+num_samples,sequence_length,seed,num_trees,nodes,paths,algo_order,paths_time,bottom_up_time,minimal_time,paths_inv_time,bottom_up_inv_time,minimal_inv_time,minimal_paths
+200.0,5000.0,9589,15,844,1772,021,9054.066234350204,0.6098415851593018,0.11164236068725586,9054.481424570084,1.0083560943603516,0.15099477767944336,415
