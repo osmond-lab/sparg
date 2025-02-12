@@ -146,14 +146,14 @@ fnames = []
 for mating in np.arange(0.1,1.1,0.1):
     for rep in range(1,6):
         mating = round(mating,2)
-        comp = 1
+        comp = 1.0
         fname = "slim_disp0.25" +"_mating"+str(mating)+"_comp"+str(comp)+ "rep"+str(rep)+ "sigma.trees"
         fnames += [(fname,)]
 
-for comp in [1.0, 2.0, 4.0, 10.0]:
+for comp in [1.0, 2.0, 4.0, 6.0, 8.0, 10.0]:
     for rep in range(1,6):
         comp = round(comp,2)
-        mating = 1
+        mating = 1.0
         fname = "slim_disp0.25" +"_mating"+str(mating)+"_comp"+str(comp)+ "rep"+str(rep)+ "sigma.trees"
         fnames += [(fname,)]        
 

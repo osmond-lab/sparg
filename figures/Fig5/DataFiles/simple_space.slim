@@ -1,19 +1,16 @@
 //adapted from https://pyslim.readthedocs.io/en/latest/vignette_space.html
 initialize() {
-    defineConstant("SIGMA_disp", 0.25);
-	defineConstant("rep",1);
+	 defineConstant("SIGMA_disp",0.25);
+    defineConstant("rep",1);
     defineConstant("L",1e6);
     defineConstant("r",1e-8);
     defineConstant("R",2);
-    defineConstant("SIGMA_int",1); // variance of mate_interaction kernel. 
-    defineConstant("SIGMA_comp",1); // variance of competition kernel. 
-    defineConstant("fname", "slim_disp" + SIGMA_disp +"rep"+rep+ "sigma.trees");
-    //defineConstant("fname", "slim_disp" + SIGMA_disp +"_mating"+SIGMA_int+"_comp"+SIGMA_comp+ "rep"+rep+ "sigma.trees");
+    defineConstant("fname", "slim_disp" + SIGMA_disp +"_mating"+SIGMA_int+"_comp"+SIGMA_comp+ "rep"+rep+ "sigma.trees");
     defineConstant("K",1);
     defineConstant("W",100.0); 
     defineConstant("t",1e4); 
     defineConstant("N0",10000);
-	setSeed(rep); // set seed for repeatability
+	 setSeed(rep); // set seed for repeatability
     initializeSLiMModelType("nonWF"); // non Wright Fisher
     initializeSLiMOptions(dimensionality="xy"); // two spatial dimensions
     initializeTreeSeq(retainCoalescentOnly=F); // record the true tree sequence (and keep unary nodes too, for locating ancestors, later)
