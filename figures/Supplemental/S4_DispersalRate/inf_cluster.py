@@ -15,7 +15,7 @@ sd = 0
 print(sd)
 np.random.seed(sd)
 
-outfile = open("slim_0.25rep0_Supl2_DispersalRate.txt", "w")
+outfile = open("dispersalrate_supl.txt", "w")
 
 keep_nodes = list(np.random.choice(ts.samples(), 10, replace=False))
 ts_sim, sim_map = ts.simplify(samples=keep_nodes, keep_input_roots=False, keep_unary=True, map_nodes=True)
@@ -28,7 +28,7 @@ sigma_trees_x = []
 sigma_trees_y = [] 
 
 for (bp_i,bp) in enumerate(ts_breaks):
-    if (bp_i > 99 and bp_i<110) or bp_i == len(ts_breaks)-1:
+    if (bp_i > 0 and bp_i<110) or bp_i == len(ts_breaks)-1:
         print(sd, bp_i,flush=True)
         ts_short = ts_chopped.keep_intervals(intervals=[(0,bp)], simplify=False).trim()
         ts_short_sim, maps_short_sim = sparg.simplify_with_recombination(ts=ts_short)
