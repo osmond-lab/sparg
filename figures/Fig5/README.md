@@ -8,13 +8,23 @@ Instructions for recreating:
 wget https://github.com/MesserLab/SLiM/releases/download/v4.0.1/SLiM.zip -P {PROGRAMDIR} 
 
 cd {PROGRAMDIR}
+
 unzip SLiM.zip
+
 rm SLiM.zip
+
 module load cmake/3.21.4
+
 module load gcc/8.3.0
+
 mkdir build
+
 cd build
+
 cmake ../SLiM
+
 make slim
+
 cd .. 
+
 mv build/ SLiM_build
