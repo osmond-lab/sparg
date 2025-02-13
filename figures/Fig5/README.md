@@ -6,6 +6,7 @@ Instructions for recreating:
 2) To run the .slim file on a cluster you will have to install SLiM on the cluster. This can be done by running the following lines on the cluster terminal
 
 wget https://github.com/MesserLab/SLiM/releases/download/v4.0.1/SLiM.zip -P {PROGRAMDIR} 
+
 cd {PROGRAMDIR}
 unzip SLiM.zip
 rm SLiM.zip
