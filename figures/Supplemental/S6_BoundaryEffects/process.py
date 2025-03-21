@@ -1,6 +1,3 @@
-import sys
-sys.path.append("/Users/jameskitchens/Documents/GitHub/sparg")
-
 import sparg
 import tskit
 import math
