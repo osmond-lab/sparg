@@ -1014,7 +1014,7 @@ def ancestors(tree, u):
          u = tree.parent(u)
 
 def create_recombination_event_dataframe(ts, breakpoint, samples, timestep=1, include_locations=False, dimensions=2):
-    """Creates a dataframe of random genetic ancestors within an ARG
+    """Creates a dataframe of genetic ancestors around a specified breakpoint within an ARG
     
     This function needs to run on the unsimplified ARG which has all of the location information if you want to compared
     estimated against true values. This info is lost during the simplification step.
@@ -1067,6 +1067,64 @@ def create_recombination_event_dataframe(ts, breakpoint, samples, timestep=1, in
         "sample":sample,
         "genome_position":genome_positions,
         "starting_window":starting_windows,
+        "time":time,
+    })
+    if include_locations:
+        locs = pd.DataFrame(location, columns=["true_location_"+str(d) for d in range(dimensions)])
+        df = pd.concat([df, locs], axis=1)
+    return df
+
+def create_ancestors_dataframe(ts, samples, timestep=1, include_locations=False, dimensions=2):
+    """Creates a dataframe of genetic ancestors of sample(s) within an ARG
+    
+    This function needs to run on the unsimplified ARG which has all of the location information if you want to compared
+    estimated against true values. This info is lost during the simplification step.
+
+    Parameters
+    ----------
+    ts : tskit.TreeSequence
+    samples : list
+        Samples IDs to track
+    timestep : int
+        Timestep between genetic ancestors tracked back in time. Default is 1.
+    include_locations : bool
+        Whether to include columns for the true locations of genetic ancestors.
+    dimensions : int
+        Number of dimensions to calculate. Default is 2.
+
+    Returns
+    -------
+    df : pandas.DataFrame
+        Genetic ancestors with estimated locations
+    """
+
+    sample = []
+    genome_positions = []
+    time = []
+    location = []
+    for node in samples:
+        just_node, map = ts.simplify(samples=[node], map_nodes=True, keep_input_roots=False, keep_unary=True, update_sample_flags=False)
+        breakpoints = list(just_node.breakpoints())
+        for i in range(len(breakpoints)-1):
+            pos = (breakpoints[i] + breakpoints[i+1])/2
+            tree = just_node.at(pos)
+            path = [0] + list(ancestors(tree, 0))
+            for i,n in enumerate(path):
+                path[i] = np.argwhere(map==n)[0][0]
+            for i,n in enumerate(path):
+                node_time = ts.node(n).time
+                if node_time % timestep == 0:
+                    sample.append(node)
+                    genome_positions.append(pos)
+                    time.append(node_time)
+                    indiv = ts.node(n).individual
+                    if indiv != -1:
+                        location.append(ts.individual(indiv).location[:dimensions])
+                    else:
+                        location.append([None for d in range(dimensions)])
+    df = pd.DataFrame({
+        "sample":sample,
+        "genome_position":genome_positions,
         "time":time,
     })
     if include_locations:
