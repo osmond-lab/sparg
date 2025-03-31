@@ -846,7 +846,9 @@ def estimate_locations_of_ancestors_in_dataframe_using_window(df, spatial_arg, w
             use_theoretical_dispersal=use_theoretical_dispersal,
             dimensions=dimensions
         )
-    duped_dict = dict(zip(duped_args["interval"], duped_args["arg"]))
+    duped_dict = None
+    if len(duped_args) > 0:
+        duped_dict = dict(zip(duped_args["interval"], duped_args["arg"]))
     with_windows["position_in_arg"] = with_windows["genome_position"] - with_windows["interval"].str[0]
     if verbose:
         df = pd.concat([df, with_windows.progress_apply(
