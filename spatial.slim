@@ -1,9 +1,10 @@
 //adapted from https://pyslim.readthedocs.io/en/latest/vignette_space.html
 initialize() {
-	 defineConstant("SIGMA_disp", 0.25);
-	 defineConstant("rep", 0);
-    defineConstant("fname", "slim_" + SIGMA_disp + "rep"+rep+ "sigma.trees");
-	 L=1e6;
+    defineConstant("SIGMA_disp", 0.25);
+    defineConstant("rep", 0);
+    //defineConstant("fname", "slim_" + SIGMA_disp + "rep"+rep+ "sigma.trees");
+    defineConstant("fname", "slim.trees");
+    L=1e6;
     r=1e-8;
     R=2;
     SIGMA_int=1;
@@ -74,7 +75,7 @@ early() {
     N0=10000;
     //catn(community.tick); 
     // survival probabilities
-    p1.fitnessScaling = 1;
+    p1.fitnessScaling = 1.0;
     inds = sim.subpopulations.individuals;
     inds[inds.age > 0].fitnessScaling = 0.0; // remove adults (ie enforce discrete generations)
     //sim.treeSeqRememberIndividuals(p1.individuals, permanent=F); // retain individuals remaining in the tree sequence (for locating ancestors, later)
