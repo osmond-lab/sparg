@@ -80,3 +80,31 @@ ancestor_locations = sparg.estimate_locations_of_ancestors_in_dataframe_using_wi
 ```
 
 The `window_size` parameter allows you to set the number of neighboring trees on either side of the local tree that sparg will use (0 - local tree only).
+
+We may be interested in locating all the ancestral nodes of a sample, which we can get with:
+
+```
+sample = 0
+spatial_arg = sparg.SpatialARG(ts=ts_chopped, verbose=True)
+ancestors = sparg.create_ancestors_dataframe(ts=ts_chopped, samples=[sample])
+ancestor_locations = sparg.estimate_locations_of_ancestors_in_dataframe_using_window(df=ancestors, spatial_arg=spatial_arg, window_size=0)
+```
+
+and then plot:
+
+```
+import matplotlib.pyplot as plt
+# draw the lineages
+for label, df in ancestor_locations.groupby('genome_position'):
+    plt.plot(df.window_0_estimated_location_0, df.window_0_estimated_location_1, '-k', linewidth=1, zorder=0)
+# color nodes by time
+plt.scatter(data=ancestor_locations, x='window_0_estimated_location_0', y='window_0_estimated_location_1', c='time', edgecolors='k')
+# aesthetics
+plt.xlabel('x position')
+plt.ylabel('y position')
+plt.colorbar(label='generations ago')
+plt.show()
+```
+
+
+
