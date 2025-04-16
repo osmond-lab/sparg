@@ -106,5 +106,5 @@ plt.colorbar(label='generations ago')
 plt.show()
 ```
 
-
+![locating all ancestral nodes of a sample](example_plot.png)
 
