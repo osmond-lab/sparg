@@ -1,4 +1,4 @@
-# sparg [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17056192.svg)](https://doi.org/10.5281/zenodo.17056192)
+# sparg [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17058368.svg)](https://doi.org/10.5281/zenodo.17058368)
 
 Using ancestral recombination graphs to estimate dispersal rates and locate genetic ancestors. See our [manuscript](https://www.biorxiv.org/content/10.1101/2024.04.10.588900v1) for details.
 
